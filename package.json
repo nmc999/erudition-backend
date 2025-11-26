@@ -13,7 +13,9 @@
     "db:studio": "prisma studio",
     "db:seed": "node prisma/seed.js",
     "lint": "eslint src/",
-    "test": "jest"
+    "test": "jest",
+    "build": "prisma generate",
+   "postinstall": "prisma generate"
   },
   "keywords": [
     "buxiban",
@@ -33,11 +35,11 @@
     "express": "^4.21.1",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "prisma": "^5.22.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.7",
-    "prisma": "^5.22.0"
+    "nodemon": "^3.1.7"
   },
   "engines": {
     "node": ">=18.0.0"

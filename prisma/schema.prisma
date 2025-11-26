@@ -440,6 +440,10 @@ model Invoice {
   description   String?
   notes         String?
   
+  // Reminder tracking
+  reminderSentAt DateTime?
+  reminderCount  Int          @default(0)
+  
   // Relations
   schoolId      String
   studentId     String
@@ -447,13 +451,28 @@ model Invoice {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  school        School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  student       Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  school        School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  student       Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  items         InvoiceItem[]
 
   @@index([schoolId])
   @@index([studentId])
   @@index([status])
   @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  description String
+  amount      Decimal  @db.Decimal(10, 2)
+  quantity    Int      @default(1)
+  
+  createdAt   DateTime @default(now())
+  
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  @@map("invoice_items")
 }
 
 enum InvoiceStatus {

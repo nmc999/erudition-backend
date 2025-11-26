@@ -16,6 +16,9 @@ import attendanceRoutes from './routes/attendance.js';
 import homeworkRoutes from './routes/homework.js';
 import messageRoutes from './routes/messages.js';
 import lineWebhook from './routes/lineWebhook.js';
+import reportsRoutes from './routes/reports.js';
+import invoicesRoutes from './routes/invoices.js';
+import parentRoutes from './routes/parent.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -34,9 +37,29 @@ const PORT = process.env.PORT || 3001;
 // Security headers
 app.use(helmet());
 
-// CORS configuration
+// CORS configuration - allow frontend origins
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  'http://localhost:5173',
+  'http://localhost:5174'
+].filter(Boolean)
+
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: function(origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true)
+    
+    if (allowedOrigins.some(allowed => origin.startsWith(allowed.replace(/\/$/, '')))) {
+      return callback(null, true)
+    }
+    
+    // In development, allow any localhost
+    if (process.env.NODE_ENV !== 'production' && origin.includes('localhost')) {
+      return callback(null, true)
+    }
+    
+    callback(new Error('Not allowed by CORS'))
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -72,6 +95,9 @@ app.use('/api/classes', classRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/homework', homeworkRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/reports', reportsRoutes);
+app.use('/api/invoices', invoicesRoutes);
+app.use('/api/parent', parentRoutes);
 
 // LINE Webhook (separate path for raw body handling)
 app.use('/api/webhook/line', lineWebhook);

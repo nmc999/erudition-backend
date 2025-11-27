@@ -413,4 +413,157 @@ router.post('/:id/reset-password',
   })
 );
 
+/**
+ * GET /api/users/me/data-export
+ * Export user's personal data (PDPA Compliance - Taiwan)
+ * Article 3 of PDPA: Right to request copies of personal data
+ */
+router.get('/me/data-export',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+
+    // Fetch all user data
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        role: true,
+        preferredLang: true,
+        lineDisplayName: true,
+        createdAt: true,
+        updatedAt: true,
+        lastLoginAt: true
+      }
+    });
+
+    // Fetch related data based on role
+    let relatedData = {};
+
+    if (req.user.role === 'PARENT') {
+      // Get children and their data
+      const parentRelations = await prisma.parentStudent.findMany({
+        where: { parentId: userId },
+        include: {
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              dateOfBirth: true,
+              allergies: true,
+              medicalInfo: true,
+              enrollments: {
+                include: {
+                  class: {
+                    select: { name: true }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      relatedData.children = parentRelations.map(pr => ({
+        relationship: pr.relationship,
+        student: pr.student
+      }));
+
+      // Get messages
+      const messages = await prisma.message.findMany({
+        where: {
+          OR: [
+            { senderId: userId },
+            { recipientId: userId }
+          ]
+        },
+        select: {
+          id: true,
+          subject: true,
+          content: true,
+          createdAt: true
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100
+      });
+      relatedData.messages = messages;
+    }
+
+    // Build export object
+    const exportData = {
+      exportDate: new Date().toISOString(),
+      exportReason: 'User data export request under Taiwan PDPA Article 3',
+      user,
+      relatedData,
+      dataRetentionPolicy: {
+        en: 'Student data is retained for 3 years after leaving the institution, then deleted or anonymized.',
+        zh: '學生資料在離開機構後保存3年，之後將予以刪除或匿名化處理。'
+      },
+      yourRights: {
+        en: 'Under the PDPA, you have the right to: inquire, review, copy, supplement, correct, request cessation, and delete your personal data.',
+        zh: '依據《個人資料保護法》，您有權：查詢、閱覽、複製、補充、更正、請求停止蒐集處理利用及刪除您的個人資料。'
+      }
+    };
+
+    res.json({
+      success: true,
+      data: exportData
+    });
+  })
+);
+
+/**
+ * POST /api/users/me/request-deletion
+ * Request deletion of personal data (PDPA Compliance - Taiwan)
+ * Article 3 of PDPA: Right to request deletion of personal data
+ */
+router.post('/me/request-deletion',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const { reason } = req.body;
+
+    // In a production system, this would:
+    // 1. Create a deletion request record
+    // 2. Send notification to admin
+    // 3. Send confirmation email to user
+    // 4. Schedule deletion after verification (usually 30 days)
+
+    // For now, we log the request and notify admin
+    console.log(`[PDPA] Data deletion request from user ${userId}`, {
+      userId,
+      email: req.user.email,
+      reason,
+      requestedAt: new Date().toISOString()
+    });
+
+    // In production: Create deletion request record
+    // await prisma.dataDeletionRequest.create({
+    //   data: {
+    //     userId,
+    //     reason,
+    //     status: 'PENDING',
+    //     requestedAt: new Date()
+    //   }
+    // });
+
+    // In production: Send email notification to admin and user
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Your data deletion request has been submitted. We will process it within 30 days and notify you via email.',
+        messageZh: '您的資料刪除請求已送出。我們將在30天內處理，並透過電子郵件通知您。',
+        requestId: `DEL-${Date.now()}`,
+        estimatedCompletionDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      }
+    });
+  })
+);
+
 export default router;

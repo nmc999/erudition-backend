@@ -10,6 +10,7 @@ const router = Router();
 /**
  * POST /api/public/register
  * Submit a new student registration
+ * Includes Taiwan PDPA consent validation
  */
 router.post('/register', asyncHandler(async (req, res) => {
   const {
@@ -44,14 +45,38 @@ router.post('/register', asyncHandler(async (req, res) => {
     // Preferences
     interestedClasses,
     howDidYouHear,
-    notes
+    notes,
+
+    // PDPA Consent (Taiwan)
+    consentDataCollection,
+    consentHealthData,
+    consentPrivacyPolicy
   } = req.body;
 
   // Validate required fields
   if (!studentFirstName || !studentLastName || !parentFirstName || !parentLastName || !parentPhone) {
     return res.status(400).json({
       success: false,
-      message: 'Missing required fields'
+      message: 'Missing required fields',
+      messageZh: '缺少必填欄位'
+    });
+  }
+
+  // Validate PDPA consent (Taiwan compliance)
+  if (!consentDataCollection || !consentPrivacyPolicy) {
+    return res.status(400).json({
+      success: false,
+      message: 'Data collection consent and privacy policy agreement are required',
+      messageZh: '需要同意資料蒐集及隱私權政策'
+    });
+  }
+
+  // If health data is provided, require health data consent
+  if ((allergies || medicalInfo) && !consentHealthData) {
+    return res.status(400).json({
+      success: false,
+      message: 'Health data consent is required when providing medical information',
+      messageZh: '提供醫療資訊時需要同意健康資料蒐集'
     });
   }
 
@@ -91,6 +116,12 @@ router.post('/register', asyncHandler(async (req, res) => {
       howDidYouHear: howDidYouHear || null,
       notes: notes || null,
       
+      // PDPA Consent (Taiwan)
+      consentDataCollection: Boolean(consentDataCollection),
+      consentHealthData: Boolean(consentHealthData),
+      consentPrivacyPolicy: Boolean(consentPrivacyPolicy),
+      consentTimestamp: new Date(),
+      
       // Status
       status: 'PENDING'
     }
@@ -104,9 +135,16 @@ router.post('/register', asyncHandler(async (req, res) => {
   res.status(201).json({
     success: true,
     message: 'Registration submitted successfully',
+    messageZh: '報名已成功送出',
     data: {
       registrationId: registration.id,
-      submittedAt: registration.createdAt
+      submittedAt: registration.createdAt,
+      consentRecorded: {
+        dataCollection: registration.consentDataCollection,
+        healthData: registration.consentHealthData,
+        privacyPolicy: registration.consentPrivacyPolicy,
+        timestamp: registration.consentTimestamp
+      }
     }
   });
 }));

@@ -12,14 +12,21 @@ async function main() {
   // Create demo school
   const school = await prisma.school.upsert({
     where: { id: 'demo-school-001' },
-    update: {},
+    update: {
+      subdomain: 'demo'
+    },
     create: {
       id: 'demo-school-001',
       name: '快樂學習補習班 Happy Learning Buxiban',
+      subdomain: 'demo',
       address: '台北市大安區和平東路一段123號',
       phone: '02-2345-6789',
       email: 'contact@happylearning.tw',
       timezone: 'Asia/Taipei',
+      primaryColor: '#4f46e5',
+      secondaryColor: '#0ea5e9',
+      subscriptionStatus: 'ACTIVE',
+      pricePerStudent: 50,
       settings: {
         language: 'zh-TW',
         currency: 'TWD',
@@ -29,6 +36,25 @@ async function main() {
   });
 
   console.log('✅ Created school:', school.name);
+
+  // Create super admin (platform level)
+  const superAdminPassword = await bcrypt.hash('superadmin123', 12);
+  const superAdmin = await prisma.user.upsert({
+    where: { email: 'superadmin@erudition.tw' },
+    update: { isSuperAdmin: true },
+    create: {
+      email: 'superadmin@erudition.tw',
+      passwordHash: superAdminPassword,
+      firstName: 'Super',
+      lastName: 'Admin',
+      role: 'ADMIN',
+      isSuperAdmin: true,
+      schoolId: school.id,
+      preferredLang: 'zh-TW'
+    }
+  });
+
+  console.log('✅ Created super admin:', superAdmin.email);
 
   // Create admin user
   const adminPassword = await bcrypt.hash('admin123', 12);

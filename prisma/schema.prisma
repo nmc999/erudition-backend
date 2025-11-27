@@ -22,6 +22,32 @@ model School {
   phone     String?
   email     String?
   
+  // SaaS: Subdomain & Branding
+  subdomain         String   @unique
+  logoUrl           String?
+  primaryColor      String   @default("#4f46e5")  // Indigo
+  secondaryColor    String   @default("#0ea5e9")  // Sky blue
+  
+  // SaaS: Billing
+  billingEmail      String?
+  stripeCustomerId  String?  @unique
+  subscriptionStatus SubscriptionStatus @default(ACTIVE)
+  pricePerStudent   Int      @default(50)  // NT$ per student per month
+  
+  // SaaS: Teacher Permissions (configurable by admin)
+  teacherCanMessageWithoutApproval Boolean @default(true)
+  teacherCanEditStudents           Boolean @default(false)
+  teacherCanViewAllClasses         Boolean @default(false)
+  teacherCanManageAttendance       Boolean @default(true)
+  teacherCanGradeHomework          Boolean @default(true)
+  teacherCanCreateHomework         Boolean @default(true)
+  teacherCanViewParentContacts     Boolean @default(true)
+  
+  // SaaS: Parent Permissions
+  parentCanMessageTeachers         Boolean @default(true)
+  parentCanViewGrades              Boolean @default(true)
+  parentCanViewAttendance          Boolean @default(true)
+  
   // LINE Official Account credentials (encrypted in production)
   lineChannelId     String?
   lineChannelSecret String?
@@ -35,12 +61,21 @@ model School {
   updatedAt DateTime @updatedAt
 
   // Relations
-  users      User[]
-  classes    Class[]
-  students   Student[]
-  invoices   Invoice[]
+  users              User[]
+  classes            Class[]
+  students           Student[]
+  invoices           Invoice[]
+  platformInvoices   PlatformInvoice[]
+  platformPayments   PlatformPayment[]
 
   @@map("schools")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  SUSPENDED
 }
 
 model User {
@@ -61,18 +96,21 @@ model User {
   role            UserRole
   preferredLang   String   @default("zh-TW")
   
+  // Platform Super Admin (can manage all schools)
+  isSuperAdmin    Boolean  @default(false)
+  
   // Status
   isActive        Boolean  @default(true)
   lastLoginAt     DateTime?
   
-  // Multi-tenancy
-  schoolId        String
+  // Multi-tenancy (optional for super admins)
+  schoolId        String?
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   // Relations
-  school              School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  school              School?             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   teachingClasses     Class[]             @relation("ClassTeacher")
   attendanceMarked    Attendance[]        @relation("MarkedBy")
   homeworkCreated     Homework[]          @relation("HomeworkCreator")
@@ -551,6 +589,12 @@ model Registration {
   howDidYouHear     String?
   notes             String?
   
+  // PDPA Consent (Taiwan)
+  consentDataCollection Boolean @default(false)
+  consentHealthData     Boolean @default(false)
+  consentPrivacyPolicy  Boolean @default(false)
+  consentTimestamp      DateTime @default(now())
+  
   // Processing
   status            RegistrationStatus @default(PENDING)
   processedById     String?
@@ -681,4 +725,83 @@ enum PaymentStatus {
   FAILED
   CANCELLED
   REFUNDED
+}
+
+// ======================
+// PLATFORM BILLING (SaaS)
+// ======================
+
+model PlatformInvoice {
+  id              String                @id @default(uuid())
+  
+  // Invoice details
+  invoiceNumber   String                @unique
+  billingPeriodStart DateTime
+  billingPeriodEnd   DateTime
+  
+  // Calculation
+  studentCount    Int
+  pricePerStudent Int                   @default(50)  // NT$
+  subtotal        Decimal               @db.Decimal(10, 2)
+  tax             Decimal               @default(0)   @db.Decimal(10, 2)
+  total           Decimal               @db.Decimal(10, 2)
+  
+  // Status
+  status          PlatformInvoiceStatus @default(PENDING)
+  dueDate         DateTime
+  paidAt          DateTime?
+  
+  // School relation
+  schoolId        String
+  school          School                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  
+  // Payments
+  payments        PlatformPayment[]
+  
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([schoolId])
+  @@index([status])
+  @@index([billingPeriodStart])
+  @@map("platform_invoices")
+}
+
+enum PlatformInvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+  REFUNDED
+}
+
+model PlatformPayment {
+  id              String                @id @default(uuid())
+  
+  // Transaction
+  stripePaymentId String?               @unique
+  amount          Decimal               @db.Decimal(10, 2)
+  method          String                @default("credit_card")
+  
+  // Status
+  status          PaymentStatus         @default(PENDING)
+  errorMessage    String?
+  
+  // Timestamps
+  paidAt          DateTime?
+  
+  // Relations
+  invoiceId       String
+  schoolId        String
+  
+  invoice         PlatformInvoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  school          School                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([invoiceId])
+  @@index([schoolId])
+  @@index([status])
+  @@map("platform_payments")
 }

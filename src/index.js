@@ -33,6 +33,9 @@ import studentRoutes from './routes/students.js';
 import publicRoutes from './routes/publicRoutes.js';
 import curriculumRoutes from './routes/curriculum.js';
 import paymentRoutes from './routes/payments.js';
+import schoolSettingsRoutes from './routes/schoolSettings.js';
+import onboardingRoutes from './routes/onboarding.js';
+import superadminRoutes from './routes/superadmin.js';
 import prisma from './config/database.js';
 
 // Import middleware
@@ -49,7 +52,7 @@ const PORT = process.env.PORT || 3001;
 // Security headers
 app.use(helmet());
 
-// CORS configuration - allow frontend origins
+// CORS configuration - allow frontend origins and subdomains
 const allowedOrigins = [
   process.env.CLIENT_URL,
   'http://localhost:5173',
@@ -60,6 +63,11 @@ app.use(cors({
   origin: function(origin, callback) {
     // Allow requests with no origin (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true)
+    
+    // Allow main domain and all subdomains of erudition.tw
+    if (origin.match(/^https?:\/\/([a-z0-9-]+\.)?erudition\.tw$/)) {
+      return callback(null, true)
+    }
     
     if (allowedOrigins.some(allowed => origin.startsWith(allowed.replace(/\/$/, '')))) {
       return callback(null, true)
@@ -135,6 +143,9 @@ app.use('/api/parent', parentRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/curriculum', curriculumRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/school', schoolSettingsRoutes);
+app.use('/api/onboarding', onboardingRoutes);
+app.use('/api/superadmin', superadminRoutes);
 
 // LINE Webhook (separate path for raw body handling)
 app.use('/api/webhook/line', lineWebhook);

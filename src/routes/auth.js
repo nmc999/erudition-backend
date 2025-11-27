@@ -354,7 +354,8 @@ router.post('/login', asyncHandler(async (req, res) => {
         schoolId: user.schoolId,
         preferredLang: user.preferredLang,
         lineDisplayName: user.lineDisplayName,
-        lineProfileUrl: user.lineProfileUrl
+        lineProfileUrl: user.lineProfileUrl,
+        isSuperAdmin: user.isSuperAdmin || false
       },
       tokens: {
         accessToken,
@@ -462,6 +463,7 @@ router.get('/me', authenticate, asyncHandler(async (req, res) => {
         preferredLang: user.preferredLang,
         lineDisplayName: user.lineDisplayName,
         lineProfileUrl: user.lineProfileUrl,
+        isSuperAdmin: user.isSuperAdmin || false,
         school: user.school
       }
     }
@@ -495,7 +497,8 @@ router.put('/me', authenticate, asyncHandler(async (req, res) => {
         lastName: user.lastName,
         role: user.role,
         preferredLang: user.preferredLang,
-        phone: user.phone
+        phone: user.phone,
+        isSuperAdmin: user.isSuperAdmin || false
       }
     }
   });

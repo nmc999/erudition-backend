@@ -1,0 +1,506 @@
+// Erudition Database Schema
+// Complete schema for buxiban management system
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ======================
+// CORE MODELS
+// ======================
+
+model School {
+  id        String   @id @default(uuid())
+  name      String
+  address   String?
+  phone     String?
+  email     String?
+  
+  // LINE Official Account credentials (encrypted in production)
+  lineChannelId     String?
+  lineChannelSecret String?
+  lineAccessToken   String?
+  
+  // Settings
+  settings  Json?    @default("{}")
+  timezone  String   @default("Asia/Taipei")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  users      User[]
+  classes    Class[]
+  students   Student[]
+  invoices   Invoice[]
+
+  @@map("schools")
+}
+
+model User {
+  id              String   @id @default(uuid())
+  email           String?  @unique
+  passwordHash    String?
+  
+  // LINE Integration
+  lineUserId      String?  @unique
+  lineDisplayName String?
+  lineProfileUrl  String?
+  lineAccessToken String?
+  
+  // Profile
+  firstName       String
+  lastName        String
+  phone           String?
+  role            UserRole
+  preferredLang   String   @default("zh-TW")
+  
+  // Status
+  isActive        Boolean  @default(true)
+  lastLoginAt     DateTime?
+  
+  // Multi-tenancy
+  schoolId        String
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  school              School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teachingClasses     Class[]             @relation("ClassTeacher")
+  attendanceMarked    Attendance[]        @relation("MarkedBy")
+  homeworkCreated     Homework[]          @relation("HomeworkCreator")
+  homeworkGraded      HomeworkSubmission[] @relation("GradedBy")
+  messagesSent        Message[]           @relation("MessageSender")
+  messagesReceived    Message[]           @relation("MessageRecipient")
+  parentRelations     ParentStudent[]     @relation("ParentUser")
+
+  @@index([schoolId])
+  @@index([lineUserId])
+  @@index([email])
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  TEACHER
+  PARENT
+  STUDENT
+}
+
+// ======================
+// STUDENT MANAGEMENT
+// ======================
+
+model Student {
+  id                   String   @id @default(uuid())
+  
+  // Basic Info
+  firstName            String
+  lastName             String
+  englishName          String?
+  dateOfBirth          DateTime?
+  gender               String?
+  
+  // Contact
+  phone                String?
+  email                String?
+  address              String?
+  
+  // Medical & Emergency
+  medicalInfo          String?
+  allergies            String?
+  emergencyContactName String?
+  emergencyContactPhone String?
+  emergencyContactRelation String?
+  
+  // Academic
+  enrollmentDate       DateTime @default(now())
+  status               StudentStatus @default(ACTIVE)
+  notes                String?
+  
+  // Photo (stored as URL)
+  photoUrl             String?
+  
+  // Multi-tenancy
+  schoolId             String
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  // Relations
+  school               School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  enrollments          ClassEnrollment[]
+  attendance           Attendance[]
+  homeworkSubmissions  HomeworkSubmission[]
+  parentRelations      ParentStudent[]
+  invoices             Invoice[]
+
+  @@index([schoolId])
+  @@index([status])
+  @@map("students")
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  GRADUATED
+  WITHDRAWN
+}
+
+model ParentStudent {
+  id           String @id @default(uuid())
+  parentId     String
+  studentId    String
+  relationship String // mother, father, guardian, grandparent, other
+  isPrimary    Boolean @default(false)
+  
+  createdAt    DateTime @default(now())
+
+  parent       User    @relation("ParentUser", fields: [parentId], references: [id], onDelete: Cascade)
+  student      Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([parentId, studentId])
+  @@map("parent_students")
+}
+
+// ======================
+// CLASS MANAGEMENT
+// ======================
+
+model Class {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  
+  // Schedule info
+  dayOfWeek   String?  // e.g., "Monday,Wednesday,Friday"
+  startTime   String?  // e.g., "16:00"
+  endTime     String?  // e.g., "18:00"
+  
+  // Capacity
+  maxStudents Int      @default(20)
+  
+  // Academic period
+  academicYear String?
+  term         String?
+  
+  // Multi-tenancy
+  schoolId    String
+  teacherId   String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  school      School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teacher     User?            @relation("ClassTeacher", fields: [teacherId], references: [id])
+  enrollments ClassEnrollment[]
+  attendance  Attendance[]
+  homework    Homework[]
+  messages    Message[]
+
+  @@index([schoolId])
+  @@index([teacherId])
+  @@map("classes")
+}
+
+model ClassEnrollment {
+  id             String   @id @default(uuid())
+  classId        String
+  studentId      String
+  enrollmentDate DateTime @default(now())
+  status         EnrollmentStatus @default(ACTIVE)
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  class          Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student        Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, studentId])
+  @@map("class_enrollments")
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  DROPPED
+  COMPLETED
+}
+
+// ======================
+// ATTENDANCE
+// ======================
+
+model Attendance {
+  id          String           @id @default(uuid())
+  date        DateTime         @db.Date
+  status      AttendanceStatus
+  reason      String?
+  notes       String?
+  
+  // Check-in/out times (optional)
+  checkInTime  DateTime?
+  checkOutTime DateTime?
+  
+  // Who marked this attendance
+  markedById  String
+  markedAt    DateTime         @default(now())
+  
+  // Parent notification tracking
+  parentNotified   Boolean   @default(false)
+  parentNotifiedAt DateTime?
+  
+  // Relations
+  classId     String
+  studentId   String
+  
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  class       Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student     Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  markedBy    User    @relation("MarkedBy", fields: [markedById], references: [id])
+
+  @@unique([classId, studentId, date])
+  @@index([classId, date])
+  @@index([studentId, date])
+  @@map("attendance")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+  EARLY_LEAVE
+}
+
+// ======================
+// HOMEWORK
+// ======================
+
+model Homework {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  
+  // Due date
+  dueDate     DateTime
+  
+  // Attachments (stored as JSON array of URLs)
+  attachments Json?    @default("[]")
+  
+  // Scoring
+  maxScore    Int?
+  
+  // Settings
+  allowLateSubmission Boolean @default(true)
+  
+  // Relations
+  classId     String
+  createdById String
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  class       Class               @relation(fields: [classId], references: [id], onDelete: Cascade)
+  createdBy   User                @relation("HomeworkCreator", fields: [createdById], references: [id])
+  submissions HomeworkSubmission[]
+
+  @@index([classId])
+  @@index([dueDate])
+  @@map("homework")
+}
+
+model HomeworkSubmission {
+  id           String   @id @default(uuid())
+  
+  // Submission content
+  content      String?
+  attachments  Json?    @default("[]")
+  
+  // Timestamps
+  submittedAt  DateTime @default(now())
+  
+  // Grading
+  score        Int?
+  feedback     String?
+  gradedById   String?
+  gradedAt     DateTime?
+  
+  // Status
+  status       SubmissionStatus @default(PENDING)
+  
+  // Relations
+  homeworkId   String
+  studentId    String
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  homework     Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  student      Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  gradedBy     User?    @relation("GradedBy", fields: [gradedById], references: [id])
+
+  @@unique([homeworkId, studentId])
+  @@index([homeworkId])
+  @@index([studentId])
+  @@map("homework_submissions")
+}
+
+enum SubmissionStatus {
+  PENDING
+  SUBMITTED
+  LATE
+  GRADED
+  RETURNED
+}
+
+// ======================
+// MESSAGING
+// ======================
+
+model Message {
+  id               String   @id @default(uuid())
+  
+  // Content
+  originalText     String
+  originalLang     String   @default("zh-TW")
+  translatedText   String?
+  translatedLang   String?
+  
+  // Attachments
+  attachments      Json?    @default("[]")
+  
+  // LINE integration
+  sentViaLine      Boolean  @default(false)
+  lineMessageId    String?
+  
+  // Read status
+  readAt           DateTime?
+  
+  // Threading (for replies)
+  threadId         String?
+  parentMessageId  String?
+  
+  // For class announcements
+  isAnnouncement   Boolean  @default(false)
+  classId          String?
+  
+  // Sender & Recipient
+  senderId         String
+  recipientId      String?  // null for class announcements
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  sender           User     @relation("MessageSender", fields: [senderId], references: [id])
+  recipient        User?    @relation("MessageRecipient", fields: [recipientId], references: [id])
+  class            Class?   @relation(fields: [classId], references: [id])
+  parentMessage    Message? @relation("MessageThread", fields: [parentMessageId], references: [id])
+  replies          Message[] @relation("MessageThread")
+
+  @@index([senderId])
+  @@index([recipientId])
+  @@index([classId])
+  @@index([threadId])
+  @@map("messages")
+}
+
+// ======================
+// FINANCIAL
+// ======================
+
+model Invoice {
+  id            String        @id @default(uuid())
+  invoiceNumber String        @unique
+  
+  // Amount
+  amount        Decimal       @db.Decimal(10, 2)
+  currency      String        @default("TWD")
+  
+  // Dates
+  issueDate     DateTime      @default(now())
+  dueDate       DateTime
+  
+  // Payment
+  status        InvoiceStatus @default(PENDING)
+  paidAt        DateTime?
+  paidAmount    Decimal?      @db.Decimal(10, 2)
+  paymentMethod String?
+  
+  // Description
+  description   String?
+  notes         String?
+  
+  // Reminder tracking
+  reminderSentAt DateTime?
+  reminderCount  Int          @default(0)
+  
+  // Relations
+  schoolId      String
+  studentId     String
+  
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  school        School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  student       Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  items         InvoiceItem[]
+
+  @@index([schoolId])
+  @@index([studentId])
+  @@index([status])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  description String
+  amount      Decimal  @db.Decimal(10, 2)
+  quantity    Int      @default(1)
+  
+  createdAt   DateTime @default(now())
+  
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  @@map("invoice_items")
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+  REFUNDED
+}
+
+// ======================
+// TRANSLATION CACHE
+// ======================
+
+model TranslationCache {
+  id             String   @id @default(uuid())
+  sourceText     String
+  sourceLang     String
+  targetLang     String
+  translatedText String
+  engine         String   @default("deepl")
+  usageCount     Int      @default(1)
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([sourceText, sourceLang, targetLang])
+  @@index([sourceText])
+  @@map("translation_cache")
+}

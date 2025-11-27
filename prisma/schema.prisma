@@ -80,6 +80,8 @@ model User {
   messagesSent        Message[]           @relation("MessageSender")
   messagesReceived    Message[]           @relation("MessageRecipient")
   parentRelations     ParentStudent[]     @relation("ParentUser")
+  lessonPlans         LessonPlan[]        @relation("LessonCreator")
+  uploadedMaterials   TeachingMaterial[]  @relation("MaterialUploader")
 
   @@index([schoolId])
   @@index([lineUserId])
@@ -142,6 +144,7 @@ model Student {
   homeworkSubmissions  HomeworkSubmission[]
   parentRelations      ParentStudent[]
   invoices             Invoice[]
+  payments             Payment[]
 
   @@index([schoolId])
   @@index([status])
@@ -206,6 +209,8 @@ model Class {
   attendance  Attendance[]
   homework    Homework[]
   messages    Message[]
+  lessonPlans LessonPlan[]
+  materials   TeachingMaterial[]
 
   @@index([schoolId])
   @@index([teacherId])
@@ -455,6 +460,7 @@ model Invoice {
   school        School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   student       Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
   items         InvoiceItem[]
+  payments      Payment[]
 
   @@index([schoolId])
   @@index([studentId])
@@ -503,4 +509,176 @@ model TranslationCache {
   @@unique([sourceText, sourceLang, targetLang])
   @@index([sourceText])
   @@map("translation_cache")
+}
+
+// ======================
+// PUBLIC REGISTRATION
+// ======================
+
+model Registration {
+  id                String   @id @default(uuid())
+  
+  // Student Info
+  studentFirstName  String
+  studentLastName   String
+  studentEnglishName String?
+  studentDob        DateTime?
+  studentGender     String?
+  studentPhone      String?
+  studentEmail      String?
+  
+  // Parent Info
+  parentFirstName   String
+  parentLastName    String
+  parentPhone       String
+  parentEmail       String?
+  parentRelation    String?
+  
+  // Emergency Contact
+  emergencyName     String?
+  emergencyPhone    String?
+  emergencyRelation String?
+  
+  // Medical Info
+  allergies         String?
+  medicalInfo       String?
+  
+  // Address
+  address           String?
+  
+  // Preferences
+  interestedClasses String[]
+  howDidYouHear     String?
+  notes             String?
+  
+  // Processing
+  status            RegistrationStatus @default(PENDING)
+  processedById     String?
+  processedAt       DateTime?
+  processNotes      String?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([status])
+  @@map("registrations")
+}
+
+enum RegistrationStatus {
+  PENDING
+  CONTACTED
+  SCHEDULED_TRIAL
+  ENROLLED
+  DECLINED
+  CANCELLED
+}
+
+// ======================
+// CURRICULUM
+// ======================
+
+model LessonPlan {
+  id          String   @id @default(uuid())
+  title       String
+  date        DateTime @db.Date
+  duration    Int      @default(90) // minutes
+  
+  // Content
+  objectives  String?
+  content     String?
+  materials   String?
+  homework    String?
+  notes       String?
+  
+  // Status
+  status      LessonStatus @default(SCHEDULED)
+  
+  // Relations
+  classId     String
+  createdById String
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  class       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("LessonCreator", fields: [createdById], references: [id])
+
+  @@index([classId])
+  @@index([date])
+  @@map("lesson_plans")
+}
+
+enum LessonStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model TeachingMaterial {
+  id           String   @id @default(uuid())
+  title        String
+  type         String   @default("document") // document, video, flashcards, link, other
+  description  String?
+  url          String?
+  fileSize     Int?
+  
+  // Relations
+  classId      String
+  uploadedById String
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  class        Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  uploadedBy   User     @relation("MaterialUploader", fields: [uploadedById], references: [id])
+
+  @@index([classId])
+  @@index([type])
+  @@map("teaching_materials")
+}
+
+// ======================
+// PAYMENTS
+// ======================
+
+model Payment {
+  id              String        @id @default(uuid())
+  
+  // Transaction
+  merchantTradeNo String        @unique
+  gatewayTradeNo  String?
+  amount          Decimal       @db.Decimal(10, 2)
+  method          String        // credit_card, line_pay, atm, cvs
+  paymentType     String?       // Actual payment type from gateway
+  
+  // Status
+  status          PaymentStatus @default(PENDING)
+  errorMessage    String?
+  
+  // Timestamps
+  paidAt          DateTime?
+  
+  // Relations
+  invoiceId       String
+  studentId       String
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  invoice         Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  student         Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([status])
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
 }

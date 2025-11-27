@@ -30,6 +30,9 @@ import reportsRoutes from './routes/reports.js';
 import invoicesRoutes from './routes/invoices.js';
 import parentRoutes from './routes/parent.js';
 import studentRoutes from './routes/students.js';
+import publicRoutes from './routes/publicRoutes.js';
+import curriculumRoutes from './routes/curriculum.js';
+import paymentRoutes from './routes/payments.js';
 import prisma from './config/database.js';
 
 // Import middleware
@@ -129,6 +132,9 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/invoices', invoicesRoutes);
 app.use('/api/parent', parentRoutes);
+app.use('/api/public', publicRoutes);
+app.use('/api/curriculum', curriculumRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // LINE Webhook (separate path for raw body handling)
 app.use('/api/webhook/line', lineWebhook);

@@ -1,5 +1,6 @@
 // Super Admin Routes
 // Platform-level management for Erudition SaaS
+// NO access to individual student/parent data - aggregate only
 
 import { Router } from 'express';
 import prisma from '../config/database.js';
@@ -27,7 +28,7 @@ const requireSuperAdmin = (req, res, next) => {
 
 /**
  * GET /api/superadmin/dashboard
- * Get platform overview statistics
+ * Get platform overview statistics (aggregate only - no PII)
  */
 router.get('/dashboard', authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
   // Get school counts by status
@@ -39,27 +40,16 @@ router.get('/dashboard', authenticate, requireSuperAdmin, asyncHandler(async (re
   // Get total schools
   const totalSchools = await prisma.school.count();
 
-  // Get total students
+  // Get total students (aggregate count only)
   const totalStudents = await prisma.student.count({
     where: { status: 'ACTIVE' }
   });
 
-  // Get total users
-  const totalUsers = await prisma.user.count({
-    where: { isActive: true }
-  });
-
-  // Get revenue this month
-  const startOfMonth = new Date();
-  startOfMonth.setDate(1);
-  startOfMonth.setHours(0, 0, 0, 0);
-
-  const monthlyRevenue = await prisma.platformPayment.aggregate({
-    where: {
-      status: 'COMPLETED',
-      paidAt: { gte: startOfMonth }
-    },
-    _sum: { amount: true }
+  // Get total users by role (aggregate counts)
+  const usersByRole = await prisma.user.groupBy({
+    by: ['role'],
+    where: { isActive: true },
+    _count: { id: true }
   });
 
   // Get recent signups (last 30 days)
@@ -70,53 +60,70 @@ router.get('/dashboard', authenticate, requireSuperAdmin, asyncHandler(async (re
     where: { createdAt: { gte: thirtyDaysAgo } }
   });
 
-  // Get schools with most students
-  const topSchools = await prisma.school.findMany({
-    take: 10,
+  // Calculate MRR (Monthly Recurring Revenue)
+  const schoolsWithStudents = await prisma.school.findMany({
+    where: { subscriptionStatus: 'ACTIVE' },
     select: {
-      id: true,
-      name: true,
-      subdomain: true,
-      subscriptionStatus: true,
-      createdAt: true,
-      _count: {
-        select: { students: true }
-      }
-    },
-    orderBy: {
-      students: { _count: 'desc' }
+      pricePerStudent: true,
+      _count: { select: { students: { where: { status: 'ACTIVE' } } } }
     }
   });
+
+  const mrr = schoolsWithStudents.reduce((total, school) => {
+    return total + (school._count.students * school.pricePerStudent);
+  }, 0);
+
+  // Get monthly revenue from payments (last 12 months)
+  const monthlyRevenue = [];
+  for (let i = 0; i < 12; i++) {
+    const startOfMonth = new Date();
+    startOfMonth.setMonth(startOfMonth.getMonth() - i);
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    
+    const endOfMonth = new Date(startOfMonth);
+    endOfMonth.setMonth(endOfMonth.getMonth() + 1);
+    endOfMonth.setDate(0);
+    endOfMonth.setHours(23, 59, 59, 999);
+
+    const revenue = await prisma.platformPayment.aggregate({
+      where: {
+        status: 'COMPLETED',
+        paidAt: { gte: startOfMonth, lte: endOfMonth }
+      },
+      _sum: { amount: true }
+    });
+
+    monthlyRevenue.unshift({
+      month: startOfMonth.toISOString().slice(0, 7),
+      revenue: Number(revenue._sum.amount || 0)
+    });
+  }
 
   res.json({
     success: true,
     data: {
       overview: {
         totalSchools,
+        activeSchools: schoolStats.find(s => s.subscriptionStatus === 'ACTIVE')?._count.id || 0,
         totalStudents,
-        totalUsers,
-        monthlyRevenue: Number(monthlyRevenue._sum.amount || 0),
+        totalTeachers: usersByRole.find(u => u.role === 'TEACHER')?._count.id || 0,
+        totalParents: usersByRole.find(u => u.role === 'PARENT')?._count.id || 0,
+        mrr,
         recentSignups
       },
       schoolsByStatus: schoolStats.reduce((acc, s) => {
         acc[s.subscriptionStatus] = s._count.id;
         return acc;
       }, {}),
-      topSchools: topSchools.map(s => ({
-        id: s.id,
-        name: s.name,
-        subdomain: s.subdomain,
-        status: s.subscriptionStatus,
-        studentCount: s._count.students,
-        createdAt: s.createdAt
-      }))
+      monthlyRevenue
     }
   });
 }));
 
 /**
  * GET /api/superadmin/schools
- * List all schools with pagination and filters
+ * List all schools with aggregate metrics (no PII)
  */
 router.get('/schools', authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
   const { 
@@ -136,8 +143,7 @@ router.get('/schools', authenticate, requireSuperAdmin, asyncHandler(async (req,
     ...(search && {
       OR: [
         { name: { contains: search, mode: 'insensitive' } },
-        { subdomain: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } }
+        { subdomain: { contains: search, mode: 'insensitive' } }
       ]
     })
   };
@@ -149,15 +155,14 @@ router.get('/schools', authenticate, requireSuperAdmin, asyncHandler(async (req,
         id: true,
         name: true,
         subdomain: true,
-        email: true,
-        phone: true,
         subscriptionStatus: true,
         pricePerStudent: true,
         createdAt: true,
+        // Aggregate counts only - no PII
         _count: {
           select: { 
-            students: true,
-            users: true,
+            students: { where: { status: 'ACTIVE' } },
+            users: { where: { isActive: true } },
             classes: true
           }
         }
@@ -173,11 +178,19 @@ router.get('/schools', authenticate, requireSuperAdmin, asyncHandler(async (req,
     success: true,
     data: {
       schools: schools.map(s => ({
-        ...s,
-        studentCount: s._count.students,
-        userCount: s._count.users,
-        classCount: s._count.classes,
-        monthlyRevenue: s._count.students * s.pricePerStudent
+        id: s.id,
+        name: s.name,
+        subdomain: s.subdomain,
+        status: s.subscriptionStatus,
+        pricePerStudent: s.pricePerStudent,
+        createdAt: s.createdAt,
+        // Aggregate metrics only
+        metrics: {
+          studentCount: s._count.students,
+          userCount: s._count.users,
+          classCount: s._count.classes,
+          monthlyRevenue: s._count.students * s.pricePerStudent
+        }
       })),
       pagination: {
         page: parseInt(page),
@@ -191,42 +204,32 @@ router.get('/schools', authenticate, requireSuperAdmin, asyncHandler(async (req,
 
 /**
  * GET /api/superadmin/schools/:id
- * Get detailed school info
+ * Get school overview (aggregate metrics, no student/parent PII)
  */
 router.get('/schools/:id', authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   const school = await prisma.school.findUnique({
     where: { id },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      subdomain: true,
+      email: true,
+      phone: true,
+      address: true,
+      subscriptionStatus: true,
+      pricePerStudent: true,
+      createdAt: true,
+      primaryColor: true,
+      logoUrl: true,
+      // Aggregate counts
       _count: {
         select: {
-          students: true,
+          students: { where: { status: 'ACTIVE' } },
           users: true,
           classes: true,
           invoices: true
-        }
-      },
-      users: {
-        where: { role: 'ADMIN' },
-        select: {
-          id: true,
-          email: true,
-          firstName: true,
-          lastName: true,
-          lastLoginAt: true
-        }
-      },
-      platformInvoices: {
-        orderBy: { createdAt: 'desc' },
-        take: 6,
-        select: {
-          id: true,
-          invoiceNumber: true,
-          total: true,
-          status: true,
-          billingPeriodStart: true,
-          billingPeriodEnd: true
         }
       }
     }
@@ -239,9 +242,48 @@ router.get('/schools/:id', authenticate, requireSuperAdmin, asyncHandler(async (
     });
   }
 
+  // Get user breakdown by role (counts only)
+  const usersByRole = await prisma.user.groupBy({
+    by: ['role'],
+    where: { schoolId: id, isActive: true },
+    _count: { id: true }
+  });
+
+  // Get billing history (amounts only, no student details)
+  const recentInvoices = await prisma.platformInvoice.findMany({
+    where: { schoolId: id },
+    orderBy: { createdAt: 'desc' },
+    take: 6,
+    select: {
+      id: true,
+      invoiceNumber: true,
+      total: true,
+      status: true,
+      billingPeriodStart: true,
+      billingPeriodEnd: true,
+      paidAt: true
+    }
+  });
+
   res.json({
     success: true,
-    data: { school }
+    data: {
+      school: {
+        ...school,
+        metrics: {
+          studentCount: school._count.students,
+          userCount: school._count.users,
+          classCount: school._count.classes,
+          invoiceCount: school._count.invoices,
+          monthlyRevenue: school._count.students * school.pricePerStudent
+        },
+        userBreakdown: usersByRole.reduce((acc, u) => {
+          acc[u.role] = u._count.id;
+          return acc;
+        }, {})
+      },
+      billingHistory: recentInvoices
+    }
   });
 }));
 
@@ -251,7 +293,7 @@ router.get('/schools/:id', authenticate, requireSuperAdmin, asyncHandler(async (
  */
 router.put('/schools/:id/status', authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { status, reason } = req.body;
 
   const validStatuses = ['ACTIVE', 'PAST_DUE', 'CANCELLED', 'SUSPENDED'];
   if (!validStatuses.includes(status)) {
@@ -267,9 +309,12 @@ router.put('/schools/:id/status', authenticate, requireSuperAdmin, asyncHandler(
     select: {
       id: true,
       name: true,
+      subdomain: true,
       subscriptionStatus: true
     }
   });
+
+  // In production: Log this action, send notification email to school admin
 
   res.json({
     success: true,
@@ -282,94 +327,111 @@ router.put('/schools/:id/status', authenticate, requireSuperAdmin, asyncHandler(
  * Get revenue analytics
  */
 router.get('/revenue', authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
-  const { months = 12 } = req.query;
-
-  // Get monthly revenue for last N months
-  const monthlyData = [];
-  const now = new Date();
-
-  for (let i = 0; i < parseInt(months); i++) {
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
-
-    const revenue = await prisma.platformPayment.aggregate({
-      where: {
-        status: 'COMPLETED',
-        paidAt: {
-          gte: startOfMonth,
-          lte: endOfMonth
-        }
-      },
-      _sum: { amount: true },
-      _count: { id: true }
-    });
-
-    monthlyData.unshift({
-      month: startOfMonth.toISOString().slice(0, 7),
-      revenue: Number(revenue._sum.amount || 0),
-      payments: revenue._count.id
-    });
-  }
-
-  // Calculate current MRR (Monthly Recurring Revenue)
-  const activeStudents = await prisma.student.count({
-    where: {
-      status: 'ACTIVE',
-      school: { subscriptionStatus: 'ACTIVE' }
+  // Calculate current MRR
+  const activeSchools = await prisma.school.findMany({
+    where: { subscriptionStatus: 'ACTIVE' },
+    select: {
+      pricePerStudent: true,
+      _count: { select: { students: { where: { status: 'ACTIVE' } } } }
     }
   });
 
-  const mrr = activeStudents * 50; // NT$50 per student
+  const mrr = activeSchools.reduce((total, school) => {
+    return total + (school._count.students * school.pricePerStudent);
+  }, 0);
+
+  const totalActiveStudents = activeSchools.reduce((total, school) => {
+    return total + school._count.students;
+  }, 0);
+
+  // Get monthly data for last 12 months
+  const monthlyData = [];
+  for (let i = 11; i >= 0; i--) {
+    const date = new Date();
+    date.setMonth(date.getMonth() - i);
+    
+    const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+    const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59);
+
+    const [payments, newSchools, newStudents] = await Promise.all([
+      prisma.platformPayment.aggregate({
+        where: {
+          status: 'COMPLETED',
+          paidAt: { gte: startOfMonth, lte: endOfMonth }
+        },
+        _sum: { amount: true },
+        _count: { id: true }
+      }),
+      prisma.school.count({
+        where: { createdAt: { gte: startOfMonth, lte: endOfMonth } }
+      }),
+      prisma.student.count({
+        where: { 
+          enrollmentDate: { gte: startOfMonth, lte: endOfMonth },
+          status: 'ACTIVE'
+        }
+      })
+    ]);
+
+    monthlyData.push({
+      month: startOfMonth.toISOString().slice(0, 7),
+      revenue: Number(payments._sum.amount || 0),
+      payments: payments._count.id,
+      newSchools,
+      newStudents
+    });
+  }
 
   res.json({
     success: true,
     data: {
       currentMRR: mrr,
-      activeStudents,
+      activeStudents: totalActiveStudents,
+      activeSchools: activeSchools.length,
+      avgRevenuePerSchool: activeSchools.length > 0 ? Math.round(mrr / activeSchools.length) : 0,
       monthlyData
     }
   });
 }));
 
 /**
- * GET /api/superadmin/invoices
- * List all platform invoices
+ * GET /api/superadmin/health
+ * Platform health check
  */
-router.get('/invoices', authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
-  const { status, page = 1, limit = 20 } = req.query;
+router.get('/health', authenticate, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const now = new Date();
+  const oneHourAgo = new Date(now - 60 * 60 * 1000);
+  const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
 
-  const skip = (parseInt(page) - 1) * parseInt(limit);
-  const take = parseInt(limit);
-
-  const where = status ? { status } : {};
-
-  const [invoices, total] = await Promise.all([
-    prisma.platformInvoice.findMany({
-      where,
-      include: {
-        school: {
-          select: {
-            name: true,
-            subdomain: true
-          }
-        }
-      },
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take
+  // Check various metrics
+  const [
+    recentLogins,
+    recentErrors,
+    pendingInvoices,
+    overdueInvoices
+  ] = await Promise.all([
+    prisma.user.count({
+      where: { lastLoginAt: { gte: oneHourAgo } }
     }),
-    prisma.platformInvoice.count({ where })
+    // In production: would check error logs
+    Promise.resolve(0),
+    prisma.platformInvoice.count({
+      where: { status: 'PENDING' }
+    }),
+    prisma.platformInvoice.count({
+      where: { status: 'OVERDUE' }
+    })
   ]);
 
   res.json({
     success: true,
     data: {
-      invoices,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        totalPages: Math.ceil(total / parseInt(limit))
+      status: 'healthy',
+      timestamp: now.toISOString(),
+      metrics: {
+        activeUsersLastHour: recentLogins,
+        pendingInvoices,
+        overdueInvoices
       }
     }
   });

@@ -67,6 +67,13 @@ model School {
   invoices           Invoice[]
   platformInvoices   PlatformInvoice[]
   platformPayments   PlatformPayment[]
+  teacherProfiles    TeacherProfile[]
+  documents          Document[]
+  timesheets         Timesheet[]
+  pricingRules       PricingRule[]
+  expenses           Expense[]
+  revenues           Revenue[]
+  emailIntegrations  EmailIntegration[]
 
   @@map("schools")
 }
@@ -120,6 +127,8 @@ model User {
   parentRelations     ParentStudent[]     @relation("ParentUser")
   lessonPlans         LessonPlan[]        @relation("LessonCreator")
   uploadedMaterials   TeachingMaterial[]  @relation("MaterialUploader")
+  teacherProfile      TeacherProfile?
+  emailIntegrations   EmailIntegration[]
 
   @@index([schoolId])
   @@index([lineUserId])
@@ -249,6 +258,8 @@ model Class {
   messages    Message[]
   lessonPlans LessonPlan[]
   materials   TeachingMaterial[]
+  timesheets  Timesheet[]
+  pricingRules PricingRule[]
 
   @@index([schoolId])
   @@index([teacherId])
@@ -450,6 +461,7 @@ model Message {
   class            Class?   @relation(fields: [classId], references: [id])
   parentMessage    Message? @relation("MessageThread", fields: [parentMessageId], references: [id])
   replies          Message[] @relation("MessageThread")
+  fileAttachments  MessageAttachment[]
 
   @@index([senderId])
   @@index([recipientId])
@@ -804,4 +816,383 @@ model PlatformPayment {
   @@index([schoolId])
   @@index([status])
   @@map("platform_payments")
+}
+
+// ======================
+// TEACHER HR MANAGEMENT
+// ======================
+
+model TeacherProfile {
+  id              String   @id @default(uuid())
+  
+  // Employment Info
+  employeeId      String?  // Internal employee number
+  hireDate        DateTime?
+  terminationDate DateTime?
+  employmentType  EmploymentType @default(FULL_TIME)
+  status          EmploymentStatus @default(ACTIVE)
+  
+  // Compensation
+  payType         PayType  @default(HOURLY)
+  hourlyRate      Decimal? @db.Decimal(10, 2)
+  monthlySalary   Decimal? @db.Decimal(10, 2)
+  
+  // Banking (for payroll)
+  bankName        String?
+  bankAccount     String?
+  
+  // Emergency Contact
+  emergencyName   String?
+  emergencyPhone  String?
+  emergencyRelation String?
+  
+  // Notes
+  notes           String?
+  
+  // Relations
+  userId          String   @unique
+  schoolId        String
+  
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school          School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  documents       Document[]
+  timesheets      Timesheet[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([status])
+  @@map("teacher_profiles")
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  SUBSTITUTE
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  ON_LEAVE
+  TERMINATED
+  RESIGNED
+}
+
+enum PayType {
+  HOURLY
+  SALARY
+}
+
+model Document {
+  id              String       @id @default(uuid())
+  
+  // Document Info
+  name            String
+  type            DocumentType
+  description     String?
+  
+  // File
+  fileUrl         String
+  fileName        String
+  fileSize        Int          // bytes
+  mimeType        String
+  
+  // Expiration (for certifications, contracts)
+  expiresAt       DateTime?
+  
+  // Relations
+  teacherProfileId String
+  uploadedById    String
+  schoolId        String
+  
+  teacherProfile  TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
+  school          School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([teacherProfileId])
+  @@index([type])
+  @@map("documents")
+}
+
+enum DocumentType {
+  CONTRACT
+  CERTIFICATION
+  ID_DOCUMENT
+  RESUME
+  BACKGROUND_CHECK
+  TAX_FORM
+  OTHER
+}
+
+model Timesheet {
+  id              String   @id @default(uuid())
+  
+  // Time Entry
+  date            DateTime @db.Date
+  scheduledStart  String?  // "09:00"
+  scheduledEnd    String?  // "17:00"
+  actualStart     String?
+  actualEnd       String?
+  
+  // Hours
+  scheduledHours  Decimal  @db.Decimal(5, 2)
+  actualHours     Decimal? @db.Decimal(5, 2)
+  
+  // Status
+  status          TimesheetStatus @default(SCHEDULED)
+  
+  // Notes
+  notes           String?
+  
+  // Relations
+  teacherProfileId String
+  classId         String?
+  schoolId        String
+  
+  teacherProfile  TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
+  class           Class?         @relation(fields: [classId], references: [id])
+  school          School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([teacherProfileId, date, classId])
+  @@index([teacherProfileId])
+  @@index([date])
+  @@index([schoolId])
+  @@map("timesheets")
+}
+
+enum TimesheetStatus {
+  SCHEDULED
+  COMPLETED
+  ABSENT
+  CANCELLED
+}
+
+// ======================
+// FINANCE AUTOMATION
+// ======================
+
+model PricingRule {
+  id              String   @id @default(uuid())
+  
+  // Rule Info
+  name            String
+  description     String?
+  
+  // Pricing
+  priceType       PriceType @default(PER_CLASS)
+  amount          Decimal   @db.Decimal(10, 2)
+  
+  // Applicability
+  classId         String?  // null = applies to all classes
+  
+  // Validity
+  validFrom       DateTime?
+  validUntil      DateTime?
+  isActive        Boolean  @default(true)
+  
+  // Relations
+  schoolId        String
+  
+  school          School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class           Class?   @relation(fields: [classId], references: [id])
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([classId])
+  @@map("pricing_rules")
+}
+
+enum PriceType {
+  PER_CLASS       // Per class session attended
+  PER_MONTH       // Monthly flat fee
+  PER_SEMESTER    // Semester fee
+  PACKAGE         // Package deal
+}
+
+model Expense {
+  id              String   @id @default(uuid())
+  
+  // Expense Info
+  category        ExpenseCategory
+  description     String
+  
+  // Amount
+  amount          Decimal  @db.Decimal(10, 2)
+  currency        String   @default("TWD")
+  
+  // Date
+  expenseDate     DateTime @db.Date
+  
+  // Receipt
+  receiptUrl      String?
+  
+  // Approval
+  status          ExpenseStatus @default(PENDING)
+  approvedById    String?
+  approvedAt      DateTime?
+  
+  // Notes
+  notes           String?
+  
+  // Relations
+  schoolId        String
+  createdById     String
+  
+  school          School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([category])
+  @@index([expenseDate])
+  @@map("expenses")
+}
+
+enum ExpenseCategory {
+  RENT
+  UTILITIES
+  SUPPLIES
+  MARKETING
+  PAYROLL
+  EQUIPMENT
+  MAINTENANCE
+  INSURANCE
+  TAXES
+  OTHER
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+model Revenue {
+  id              String   @id @default(uuid())
+  
+  // Revenue Info
+  category        RevenueCategory
+  description     String
+  
+  // Amount
+  amount          Decimal  @db.Decimal(10, 2)
+  currency        String   @default("TWD")
+  
+  // Date
+  revenueDate     DateTime @db.Date
+  
+  // Source
+  invoiceId       String?  // Link to invoice if applicable
+  
+  // Notes
+  notes           String?
+  
+  // Relations
+  schoolId        String
+  createdById     String
+  
+  school          School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([category])
+  @@index([revenueDate])
+  @@map("revenues")
+}
+
+enum RevenueCategory {
+  TUITION
+  REGISTRATION_FEE
+  MATERIALS
+  LATE_FEE
+  OTHER
+}
+
+// ======================
+// MESSAGE ATTACHMENTS
+// ======================
+
+model MessageAttachment {
+  id              String   @id @default(uuid())
+  
+  // File Info
+  fileName        String
+  fileUrl         String
+  fileSize        Int      // bytes
+  mimeType        String
+  
+  // Security
+  scannedAt       DateTime?
+  scanStatus      ScanStatus @default(PENDING)
+  
+  // Relations
+  messageId       String
+  
+  message         Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+
+  @@index([messageId])
+  @@map("message_attachments")
+}
+
+enum ScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  ERROR
+}
+
+// ======================
+// EMAIL INTEGRATION
+// ======================
+
+model EmailIntegration {
+  id              String   @id @default(uuid())
+  
+  // Provider
+  provider        EmailProvider
+  email           String
+  
+  // OAuth Tokens (encrypted in production)
+  accessToken     String?
+  refreshToken    String?
+  tokenExpiresAt  DateTime?
+  
+  // Status
+  isActive        Boolean  @default(true)
+  lastSyncAt      DateTime?
+  
+  // Relations
+  userId          String
+  schoolId        String
+  
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school          School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, provider])
+  @@index([schoolId])
+  @@map("email_integrations")
+}
+
+enum EmailProvider {
+  GMAIL
+  OUTLOOK
+  YAHOO
 }

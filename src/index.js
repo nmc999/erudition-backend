@@ -36,6 +36,10 @@ import paymentRoutes from './routes/payments.js';
 import schoolSettingsRoutes from './routes/schoolSettings.js';
 import onboardingRoutes from './routes/onboarding.js';
 import superadminRoutes from './routes/superadmin.js';
+import hrRoutes from './routes/hr.js';
+import financeRoutes from './routes/finance.js';
+import uploadRoutes from './routes/upload.js';
+import emailRoutes from './routes/email.js';
 import prisma from './config/database.js';
 
 // Import middleware
@@ -146,6 +150,10 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/school', schoolSettingsRoutes);
 app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/superadmin', superadminRoutes);
+app.use('/api/hr', hrRoutes);
+app.use('/api/finance', financeRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/email', emailRoutes);
 
 // LINE Webhook (separate path for raw body handling)
 app.use('/api/webhook/line', lineWebhook);

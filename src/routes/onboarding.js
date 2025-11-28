@@ -2,7 +2,7 @@
 // Handles new school registration and setup
 
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 import prisma from '../config/database.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 

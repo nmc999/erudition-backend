@@ -3,7 +3,7 @@
 
 import { Router } from 'express';
 import prisma from '../config/database.js';
-import { authenticate, requireRole } from '../middleware/auth.js';
+import { authenticate, authorize } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -88,7 +88,7 @@ router.get('/lessons', authenticate, asyncHandler(async (req, res) => {
  * POST /api/curriculum/lessons
  * Create a new lesson plan
  */
-router.post('/lessons', authenticate, requireRole(['ADMIN', 'MANAGER', 'TEACHER']), asyncHandler(async (req, res) => {
+router.post('/lessons', authenticate, authorize('ADMIN', 'MANAGER', 'TEACHER'), asyncHandler(async (req, res) => {
   const {
     title,
     classId,
@@ -180,7 +180,7 @@ router.get('/lessons/:id', authenticate, asyncHandler(async (req, res) => {
  * PUT /api/curriculum/lessons/:id
  * Update a lesson plan
  */
-router.put('/lessons/:id', authenticate, requireRole(['ADMIN', 'MANAGER', 'TEACHER']), asyncHandler(async (req, res) => {
+router.put('/lessons/:id', authenticate, authorize('ADMIN', 'MANAGER', 'TEACHER'), asyncHandler(async (req, res) => {
   const {
     title,
     classId,
@@ -229,7 +229,7 @@ router.put('/lessons/:id', authenticate, requireRole(['ADMIN', 'MANAGER', 'TEACH
  * DELETE /api/curriculum/lessons/:id
  * Delete a lesson plan
  */
-router.delete('/lessons/:id', authenticate, requireRole(['ADMIN', 'MANAGER', 'TEACHER']), asyncHandler(async (req, res) => {
+router.delete('/lessons/:id', authenticate, authorize('ADMIN', 'MANAGER', 'TEACHER'), asyncHandler(async (req, res) => {
   await prisma.lessonPlan.delete({
     where: { id: req.params.id }
   });
@@ -314,7 +314,7 @@ router.get('/materials', authenticate, asyncHandler(async (req, res) => {
  * POST /api/curriculum/materials
  * Upload a new teaching material
  */
-router.post('/materials', authenticate, requireRole(['ADMIN', 'MANAGER', 'TEACHER']), asyncHandler(async (req, res) => {
+router.post('/materials', authenticate, authorize('ADMIN', 'MANAGER', 'TEACHER'), asyncHandler(async (req, res) => {
   const {
     title,
     classId,
@@ -362,7 +362,7 @@ router.post('/materials', authenticate, requireRole(['ADMIN', 'MANAGER', 'TEACHE
  * DELETE /api/curriculum/materials/:id
  * Delete a teaching material
  */
-router.delete('/materials/:id', authenticate, requireRole(['ADMIN', 'MANAGER', 'TEACHER']), asyncHandler(async (req, res) => {
+router.delete('/materials/:id', authenticate, authorize('ADMIN', 'MANAGER', 'TEACHER'), asyncHandler(async (req, res) => {
   await prisma.teachingMaterial.delete({
     where: { id: req.params.id }
   });

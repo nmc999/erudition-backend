@@ -42,7 +42,8 @@ export const authenticate = async (req, res, next) => {
         schoolId: true,
         preferredLang: true,
         isActive: true,
-        lineUserId: true
+        lineUserId: true,
+        isSuperAdmin: true
       }
     });
 
@@ -122,7 +123,8 @@ export const optionalAuth = async (req, res, next) => {
         role: true,
         schoolId: true,
         preferredLang: true,
-        isActive: true
+        isActive: true,
+        isSuperAdmin: true
       }
     });
 

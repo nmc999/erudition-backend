@@ -65,6 +65,21 @@ router.get('/', authenticate, asyncHandler(async (req, res) => {
               }
             }
           }
+        },
+        parentRelations: {
+          select: {
+            relationship: true,
+            isPrimary: true,
+            parent: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                phone: true
+              }
+            }
+          }
         }
       },
       orderBy: [
@@ -324,6 +339,158 @@ router.delete('/:id',
       data: {
         message: 'Student deactivated successfully',
         messageZh: '學生已成功停用'
+      }
+    });
+  })
+);
+
+/**
+ * POST /api/students/:id/link-parent
+ * Link a parent to a student
+ */
+router.post('/:id/link-parent',
+  authenticate,
+  authorize('ADMIN', 'MANAGER'),
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { parentId, relationship = 'parent', isPrimary = false } = req.body;
+
+    // Verify student belongs to school
+    const student = await prisma.student.findFirst({
+      where: {
+        id,
+        schoolId: req.user.schoolId
+      }
+    });
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: 'Student not found',
+          messageZh: '找不到學生'
+        }
+      });
+    }
+
+    // Verify parent exists and is in the same school
+    const parent = await prisma.user.findFirst({
+      where: {
+        id: parentId,
+        schoolId: req.user.schoolId,
+        role: 'PARENT'
+      }
+    });
+
+    if (!parent) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: 'Parent not found',
+          messageZh: '找不到家長'
+        }
+      });
+    }
+
+    // Check if relationship already exists
+    const existingRelation = await prisma.parentStudent.findFirst({
+      where: {
+        parentId,
+        studentId: id
+      }
+    });
+
+    if (existingRelation) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Parent is already linked to this student',
+          messageZh: '家長已連結此學生'
+        }
+      });
+    }
+
+    // If isPrimary, unset other primary relations for this student
+    if (isPrimary) {
+      await prisma.parentStudent.updateMany({
+        where: { studentId: id },
+        data: { isPrimary: false }
+      });
+    }
+
+    // Create the relationship
+    const relation = await prisma.parentStudent.create({
+      data: {
+        parentId,
+        studentId: id,
+        relationship,
+        isPrimary
+      },
+      include: {
+        parent: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true
+          }
+        }
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        relation,
+        message: 'Parent linked successfully',
+        messageZh: '家長已成功連結'
+      }
+    });
+  })
+);
+
+/**
+ * DELETE /api/students/:id/unlink-parent/:parentId
+ * Unlink a parent from a student
+ */
+router.delete('/:id/unlink-parent/:parentId',
+  authenticate,
+  authorize('ADMIN', 'MANAGER'),
+  asyncHandler(async (req, res) => {
+    const { id, parentId } = req.params;
+
+    // Verify student belongs to school
+    const student = await prisma.student.findFirst({
+      where: {
+        id,
+        schoolId: req.user.schoolId
+      }
+    });
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: 'Student not found',
+          messageZh: '找不到學生'
+        }
+      });
+    }
+
+    // Delete the relationship
+    await prisma.parentStudent.deleteMany({
+      where: {
+        parentId,
+        studentId: id
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Parent unlinked successfully',
+        messageZh: '家長已成功取消連結'
       }
     });
   })

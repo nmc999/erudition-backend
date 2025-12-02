@@ -40,6 +40,7 @@ import hrRoutes from './routes/hr.js';
 import financeRoutes from './routes/finance.js';
 import uploadRoutes from './routes/upload.js';
 import emailRoutes from './routes/email.js';
+import analyticsRoutes from './routes/analytics.js';
 import prisma from './config/database.js';
 
 // Import middleware
@@ -154,6 +155,7 @@ app.use('/api/hr', hrRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/email', emailRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // LINE Webhook (separate path for raw body handling)
 app.use('/api/webhook/line', lineWebhook);

@@ -71,7 +71,7 @@ app.use(cors({
     if (!origin) return callback(null, true)
     
     // Allow main domain and all subdomains of erudition.tw
-    if (origin.match(/^https?:\/\/([a-z0-9-]+\.)?erudition\.tw$/)) {
+    if (origin.match(/^https?:\/\/([a-z0-9-]+\.)?erudition\.com\.tw$/)) {
       return callback(null, true)
     }
     

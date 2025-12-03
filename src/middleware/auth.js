@@ -16,6 +16,7 @@ export const authenticate = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('Auth FAIL: No bearer token') //debug
       return res.status(401).json({
         success: false,
         error: {
@@ -27,9 +28,11 @@ export const authenticate = async (req, res, next) => {
     }
 
     const token = authHeader.split(' ')[1];
+    console.log('Auth: Token extracted, verifying...') //debug
 
     // Verify token
     const decoded = jwt.verify(token, JWT_SECRET);
+    console.log('Auth: Token verified, userId:', decoded.userId) //debug
 
     // Get user from database
     const user = await prisma.user.findUnique({
@@ -47,6 +50,8 @@ export const authenticate = async (req, res, next) => {
         isSuperAdmin: true
       }
     });
+
+    console.log('Auth: User lookup result:', user ? 'found' : 'NOT FOUND') //debug
 
     if (!user) {
       return res.status(401).json({

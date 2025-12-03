@@ -70,7 +70,12 @@ app.use(cors({
     // Allow requests with no origin (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true)
     
-    // Allow main domain and all subdomains of erudition.tw
+        // Explicitly allow production domain
+    if (origin === 'https://erudition.com.tw') {
+      return callback(null, true)
+    }
+        
+      // Allow main domain and all subdomains of erudition.tw
     if (origin.match(/^https?:\/\/([a-z0-9-]+\.)?erudition\.com\.tw$/)) {
       return callback(null, true)
     }

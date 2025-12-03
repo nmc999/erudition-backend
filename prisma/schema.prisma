@@ -16,24 +16,24 @@ datasource db {
 // ======================
 
 model School {
-  id        String   @id @default(uuid())
-  name      String
-  address   String?
-  phone     String?
-  email     String?
-  
+  id      String  @id @default(uuid())
+  name    String
+  address String?
+  phone   String?
+  email   String?
+
   // SaaS: Subdomain & Branding
-  subdomain         String   @unique
-  logoUrl           String?
-  primaryColor      String   @default("#4f46e5")  // Indigo
-  secondaryColor    String   @default("#0ea5e9")  // Sky blue
-  
+  subdomain      String  @unique
+  logoUrl        String?
+  primaryColor   String  @default("#4f46e5") // Indigo
+  secondaryColor String  @default("#0ea5e9") // Sky blue
+
   // SaaS: Billing
-  billingEmail      String?
-  stripeCustomerId  String?  @unique
+  billingEmail       String?
+  stripeCustomerId   String?            @unique
   subscriptionStatus SubscriptionStatus @default(ACTIVE)
-  pricePerStudent   Int      @default(50)  // NT$ per student per month
-  
+  pricePerStudent    Int                @default(50) // NT$ per student per month
+
   // SaaS: Teacher Permissions (configurable by admin)
   teacherCanMessageWithoutApproval Boolean @default(true)
   teacherCanEditStudents           Boolean @default(false)
@@ -42,21 +42,21 @@ model School {
   teacherCanGradeHomework          Boolean @default(true)
   teacherCanCreateHomework         Boolean @default(true)
   teacherCanViewParentContacts     Boolean @default(true)
-  
+
   // SaaS: Parent Permissions
-  parentCanMessageTeachers         Boolean @default(true)
-  parentCanViewGrades              Boolean @default(true)
-  parentCanViewAttendance          Boolean @default(true)
-  
+  parentCanMessageTeachers Boolean @default(true)
+  parentCanViewGrades      Boolean @default(true)
+  parentCanViewAttendance  Boolean @default(true)
+
   // LINE Official Account credentials (encrypted in production)
   lineChannelId     String?
   lineChannelSecret String?
   lineAccessToken   String?
-  
+
   // Settings
-  settings  Json?    @default("{}")
-  timezone  String   @default("Asia/Taipei")
-  
+  settings Json?  @default("{}")
+  timezone String @default("Asia/Taipei")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -74,6 +74,8 @@ model School {
   expenses           Expense[]
   revenues           Revenue[]
   emailIntegrations  EmailIntegration[]
+  behaviorScales     BehaviorScale[]
+  behaviorCategories BehaviorCategory[]
 
   @@map("schools")
 }
@@ -86,49 +88,50 @@ enum SubscriptionStatus {
 }
 
 model User {
-  id              String   @id @default(uuid())
-  email           String?  @unique
-  passwordHash    String?
-  
+  id           String  @id @default(uuid())
+  email        String? @unique
+  passwordHash String?
+
   // LINE Integration
-  lineUserId      String?  @unique
+  lineUserId      String? @unique
   lineDisplayName String?
   lineProfileUrl  String?
   lineAccessToken String?
-  
+
   // Profile
-  firstName       String
-  lastName        String
-  phone           String?
-  role            UserRole
-  preferredLang   String   @default("zh-TW")
-  
+  firstName     String
+  lastName      String
+  phone         String?
+  role          UserRole
+  preferredLang String   @default("zh-TW")
+
   // Platform Super Admin (can manage all schools)
-  isSuperAdmin    Boolean  @default(false)
-  
+  isSuperAdmin Boolean @default(false)
+
   // Status
-  isActive        Boolean  @default(true)
-  lastLoginAt     DateTime?
-  
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+
   // Multi-tenancy (optional for super admins)
-  schoolId        String?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  schoolId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  school              School?             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  teachingClasses     Class[]             @relation("ClassTeacher")
-  attendanceMarked    Attendance[]        @relation("MarkedBy")
-  homeworkCreated     Homework[]          @relation("HomeworkCreator")
-  homeworkGraded      HomeworkSubmission[] @relation("GradedBy")
-  messagesSent        Message[]           @relation("MessageSender")
-  messagesReceived    Message[]           @relation("MessageRecipient")
-  parentRelations     ParentStudent[]     @relation("ParentUser")
-  lessonPlans         LessonPlan[]        @relation("LessonCreator")
-  uploadedMaterials   TeachingMaterial[]  @relation("MaterialUploader")
-  teacherProfile      TeacherProfile?
-  emailIntegrations   EmailIntegration[]
+  school            School?              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teachingClasses   Class[]              @relation("ClassTeacher")
+  attendanceMarked  Attendance[]         @relation("MarkedBy")
+  homeworkCreated   Homework[]           @relation("HomeworkCreator")
+  homeworkGraded    HomeworkSubmission[] @relation("GradedBy")
+  messagesSent      Message[]            @relation("MessageSender")
+  messagesReceived  Message[]            @relation("MessageRecipient")
+  parentRelations   ParentStudent[]      @relation("ParentUser")
+  lessonPlans       LessonPlan[]         @relation("LessonCreator")
+  uploadedMaterials TeachingMaterial[]   @relation("MaterialUploader")
+  teacherProfile    TeacherProfile?
+  emailIntegrations EmailIntegration[]
+  behaviorRecorded  BehaviorRecord[]     @relation("BehaviorRecordedBy")
 
   @@index([schoolId])
   @@index([lineUserId])
@@ -149,49 +152,50 @@ enum UserRole {
 // ======================
 
 model Student {
-  id                   String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Basic Info
-  firstName            String
-  lastName             String
-  englishName          String?
-  dateOfBirth          DateTime?
-  gender               String?
-  
+  firstName   String
+  lastName    String
+  englishName String?
+  dateOfBirth DateTime?
+  gender      String?
+
   // Contact
-  phone                String?
-  email                String?
-  address              String?
-  
+  phone   String?
+  email   String?
+  address String?
+
   // Medical & Emergency
-  medicalInfo          String?
-  allergies            String?
-  emergencyContactName String?
-  emergencyContactPhone String?
+  medicalInfo              String?
+  allergies                String?
+  emergencyContactName     String?
+  emergencyContactPhone    String?
   emergencyContactRelation String?
-  
+
   // Academic
-  enrollmentDate       DateTime @default(now())
-  status               StudentStatus @default(ACTIVE)
-  notes                String?
-  
+  enrollmentDate DateTime      @default(now())
+  status         StudentStatus @default(ACTIVE)
+  notes          String?
+
   // Photo (stored as URL)
-  photoUrl             String?
-  
+  photoUrl String?
+
   // Multi-tenancy
-  schoolId             String
-  
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  schoolId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  school               School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  enrollments          ClassEnrollment[]
-  attendance           Attendance[]
-  homeworkSubmissions  HomeworkSubmission[]
-  parentRelations      ParentStudent[]
-  invoices             Invoice[]
-  payments             Payment[]
+  school              School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  enrollments         ClassEnrollment[]
+  attendance          Attendance[]
+  homeworkSubmissions HomeworkSubmission[]
+  parentRelations     ParentStudent[]
+  invoices            Invoice[]
+  payments            Payment[]
+  behaviorRecords     BehaviorRecord[]
 
   @@index([schoolId])
   @@index([status])
@@ -206,16 +210,16 @@ enum StudentStatus {
 }
 
 model ParentStudent {
-  id           String @id @default(uuid())
+  id           String  @id @default(uuid())
   parentId     String
   studentId    String
   relationship String // mother, father, guardian, grandparent, other
   isPrimary    Boolean @default(false)
-  
-  createdAt    DateTime @default(now())
 
-  parent       User    @relation("ParentUser", fields: [parentId], references: [id], onDelete: Cascade)
-  student      Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  parent  User    @relation("ParentUser", fields: [parentId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([parentId, studentId])
   @@map("parent_students")
@@ -226,40 +230,41 @@ model ParentStudent {
 // ======================
 
 model Class {
-  id          String   @id @default(uuid())
+  id          String  @id @default(uuid())
   name        String
   description String?
-  
+
   // Schedule info
-  dayOfWeek   String?  // e.g., "Monday,Wednesday,Friday"
-  startTime   String?  // e.g., "16:00"
-  endTime     String?  // e.g., "18:00"
-  
+  dayOfWeek String? // e.g., "Monday,Wednesday,Friday"
+  startTime String? // e.g., "16:00"
+  endTime   String? // e.g., "18:00"
+
   // Capacity
-  maxStudents Int      @default(20)
-  
+  maxStudents Int @default(20)
+
   // Academic period
   academicYear String?
   term         String?
-  
+
   // Multi-tenancy
-  schoolId    String
-  teacherId   String?
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  schoolId  String
+  teacherId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  school      School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  teacher     User?            @relation("ClassTeacher", fields: [teacherId], references: [id])
-  enrollments ClassEnrollment[]
-  attendance  Attendance[]
-  homework    Homework[]
-  messages    Message[]
-  lessonPlans LessonPlan[]
-  materials   TeachingMaterial[]
-  timesheets  Timesheet[]
-  pricingRules PricingRule[]
+  school          School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teacher         User?              @relation("ClassTeacher", fields: [teacherId], references: [id])
+  enrollments     ClassEnrollment[]
+  attendance      Attendance[]
+  homework        Homework[]
+  messages        Message[]
+  lessonPlans     LessonPlan[]
+  materials       TeachingMaterial[]
+  timesheets      Timesheet[]
+  pricingRules    PricingRule[]
+  behaviorRecords BehaviorRecord[]
 
   @@index([schoolId])
   @@index([teacherId])
@@ -267,17 +272,17 @@ model Class {
 }
 
 model ClassEnrollment {
-  id             String   @id @default(uuid())
+  id             String           @id @default(uuid())
   classId        String
   studentId      String
-  enrollmentDate DateTime @default(now())
+  enrollmentDate DateTime         @default(now())
   status         EnrollmentStatus @default(ACTIVE)
-  
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
 
-  class          Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
-  student        Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([classId, studentId])
   @@map("class_enrollments")
@@ -294,34 +299,34 @@ enum EnrollmentStatus {
 // ======================
 
 model Attendance {
-  id          String           @id @default(uuid())
-  date        DateTime         @db.Date
-  status      AttendanceStatus
-  reason      String?
-  notes       String?
-  
+  id     String           @id @default(uuid())
+  date   DateTime         @db.Date
+  status AttendanceStatus
+  reason String?
+  notes  String?
+
   // Check-in/out times (optional)
   checkInTime  DateTime?
   checkOutTime DateTime?
-  
+
   // Who marked this attendance
-  markedById  String
-  markedAt    DateTime         @default(now())
-  
+  markedById String
+  markedAt   DateTime @default(now())
+
   // Parent notification tracking
   parentNotified   Boolean   @default(false)
   parentNotifiedAt DateTime?
-  
-  // Relations
-  classId     String
-  studentId   String
-  
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
 
-  class       Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
-  student     Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  markedBy    User    @relation("MarkedBy", fields: [markedById], references: [id])
+  // Relations
+  classId   String
+  studentId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  class    Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student  Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  markedBy User    @relation("MarkedBy", fields: [markedById], references: [id])
 
   @@unique([classId, studentId, date])
   @@index([classId, date])
@@ -342,31 +347,31 @@ enum AttendanceStatus {
 // ======================
 
 model Homework {
-  id          String   @id @default(uuid())
+  id          String  @id @default(uuid())
   title       String
   description String?
-  
+
   // Due date
-  dueDate     DateTime
-  
+  dueDate DateTime
+
   // Attachments (stored as JSON array of URLs)
-  attachments Json?    @default("[]")
-  
+  attachments Json? @default("[]")
+
   // Scoring
-  maxScore    Int?
-  
+  maxScore Int?
+
   // Settings
   allowLateSubmission Boolean @default(true)
-  
+
   // Relations
   classId     String
   createdById String
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 
-  class       Class               @relation(fields: [classId], references: [id], onDelete: Cascade)
-  createdBy   User                @relation("HomeworkCreator", fields: [createdById], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  class       Class                @relation(fields: [classId], references: [id], onDelete: Cascade)
+  createdBy   User                 @relation("HomeworkCreator", fields: [createdById], references: [id])
   submissions HomeworkSubmission[]
 
   @@index([classId])
@@ -375,34 +380,34 @@ model Homework {
 }
 
 model HomeworkSubmission {
-  id           String   @id @default(uuid())
-  
-  // Submission content
-  content      String?
-  attachments  Json?    @default("[]")
-  
-  // Timestamps
-  submittedAt  DateTime @default(now())
-  
-  // Grading
-  score        Int?
-  feedback     String?
-  gradedById   String?
-  gradedAt     DateTime?
-  
-  // Status
-  status       SubmissionStatus @default(PENDING)
-  
-  // Relations
-  homeworkId   String
-  studentId    String
-  
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id String @id @default(uuid())
 
-  homework     Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
-  student      Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  gradedBy     User?    @relation("GradedBy", fields: [gradedById], references: [id])
+  // Submission content
+  content     String?
+  attachments Json?   @default("[]")
+
+  // Timestamps
+  submittedAt DateTime @default(now())
+
+  // Grading
+  score      Int?
+  feedback   String?
+  gradedById String?
+  gradedAt   DateTime?
+
+  // Status
+  status SubmissionStatus @default(PENDING)
+
+  // Relations
+  homeworkId String
+  studentId  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  homework Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  student  Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  gradedBy User?    @relation("GradedBy", fields: [gradedById], references: [id])
 
   @@unique([homeworkId, studentId])
   @@index([homeworkId])
@@ -423,45 +428,45 @@ enum SubmissionStatus {
 // ======================
 
 model Message {
-  id               String   @id @default(uuid())
-  
-  // Content
-  originalText     String
-  originalLang     String   @default("zh-TW")
-  translatedText   String?
-  translatedLang   String?
-  
-  // Attachments
-  attachments      Json?    @default("[]")
-  
-  // LINE integration
-  sentViaLine      Boolean  @default(false)
-  lineMessageId    String?
-  
-  // Read status
-  readAt           DateTime?
-  
-  // Threading (for replies)
-  threadId         String?
-  parentMessageId  String?
-  
-  // For class announcements
-  isAnnouncement   Boolean  @default(false)
-  classId          String?
-  
-  // Sender & Recipient
-  senderId         String
-  recipientId      String?  // null for class announcements
-  
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id String @id @default(uuid())
 
-  sender           User     @relation("MessageSender", fields: [senderId], references: [id])
-  recipient        User?    @relation("MessageRecipient", fields: [recipientId], references: [id])
-  class            Class?   @relation(fields: [classId], references: [id])
-  parentMessage    Message? @relation("MessageThread", fields: [parentMessageId], references: [id])
-  replies          Message[] @relation("MessageThread")
-  fileAttachments  MessageAttachment[]
+  // Content
+  originalText   String
+  originalLang   String  @default("zh-TW")
+  translatedText String?
+  translatedLang String?
+
+  // Attachments
+  attachments Json? @default("[]")
+
+  // LINE integration
+  sentViaLine   Boolean @default(false)
+  lineMessageId String?
+
+  // Read status
+  readAt DateTime?
+
+  // Threading (for replies)
+  threadId        String?
+  parentMessageId String?
+
+  // For class announcements
+  isAnnouncement Boolean @default(false)
+  classId        String?
+
+  // Sender & Recipient
+  senderId    String
+  recipientId String? // null for class announcements
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sender          User                @relation("MessageSender", fields: [senderId], references: [id])
+  recipient       User?               @relation("MessageRecipient", fields: [recipientId], references: [id])
+  class           Class?              @relation(fields: [classId], references: [id])
+  parentMessage   Message?            @relation("MessageThread", fields: [parentMessageId], references: [id])
+  replies         Message[]           @relation("MessageThread")
+  fileAttachments MessageAttachment[]
 
   @@index([senderId])
   @@index([recipientId])
@@ -475,42 +480,42 @@ model Message {
 // ======================
 
 model Invoice {
-  id            String        @id @default(uuid())
-  invoiceNumber String        @unique
-  
+  id            String @id @default(uuid())
+  invoiceNumber String @unique
+
   // Amount
-  amount        Decimal       @db.Decimal(10, 2)
-  currency      String        @default("TWD")
-  
+  amount   Decimal @db.Decimal(10, 2)
+  currency String  @default("TWD")
+
   // Dates
-  issueDate     DateTime      @default(now())
-  dueDate       DateTime
-  
+  issueDate DateTime @default(now())
+  dueDate   DateTime
+
   // Payment
   status        InvoiceStatus @default(PENDING)
   paidAt        DateTime?
   paidAmount    Decimal?      @db.Decimal(10, 2)
   paymentMethod String?
-  
+
   // Description
-  description   String?
-  notes         String?
-  
+  description String?
+  notes       String?
+
   // Reminder tracking
   reminderSentAt DateTime?
-  reminderCount  Int          @default(0)
-  
-  // Relations
-  schoolId      String
-  studentId     String
-  
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  reminderCount  Int       @default(0)
 
-  school        School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  student       Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  items         InvoiceItem[]
-  payments      Payment[]
+  // Relations
+  schoolId  String
+  studentId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  school   School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  student  Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  items    InvoiceItem[]
+  payments Payment[]
 
   @@index([schoolId])
   @@index([studentId])
@@ -519,16 +524,16 @@ model Invoice {
 }
 
 model InvoiceItem {
-  id          String   @id @default(uuid())
+  id          String  @id @default(uuid())
   invoiceId   String
   description String
-  amount      Decimal  @db.Decimal(10, 2)
-  quantity    Int      @default(1)
-  
-  createdAt   DateTime @default(now())
-  
-  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  
+  amount      Decimal @db.Decimal(10, 2)
+  quantity    Int     @default(1)
+
+  createdAt DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
   @@map("invoice_items")
 }
 
@@ -545,16 +550,16 @@ enum InvoiceStatus {
 // ======================
 
 model TranslationCache {
-  id             String   @id @default(uuid())
+  id             String @id @default(uuid())
   sourceText     String
   sourceLang     String
   targetLang     String
   translatedText String
-  engine         String   @default("deepl")
-  usageCount     Int      @default(1)
-  
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  engine         String @default("deepl")
+  usageCount     Int    @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([sourceText, sourceLang, targetLang])
   @@index([sourceText])
@@ -566,55 +571,55 @@ model TranslationCache {
 // ======================
 
 model Registration {
-  id                String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Student Info
-  studentFirstName  String
-  studentLastName   String
+  studentFirstName   String
+  studentLastName    String
   studentEnglishName String?
-  studentDob        DateTime?
-  studentGender     String?
-  studentPhone      String?
-  studentEmail      String?
-  
+  studentDob         DateTime?
+  studentGender      String?
+  studentPhone       String?
+  studentEmail       String?
+
   // Parent Info
-  parentFirstName   String
-  parentLastName    String
-  parentPhone       String
-  parentEmail       String?
-  parentRelation    String?
-  
+  parentFirstName String
+  parentLastName  String
+  parentPhone     String
+  parentEmail     String?
+  parentRelation  String?
+
   // Emergency Contact
   emergencyName     String?
   emergencyPhone    String?
   emergencyRelation String?
-  
+
   // Medical Info
-  allergies         String?
-  medicalInfo       String?
-  
+  allergies   String?
+  medicalInfo String?
+
   // Address
-  address           String?
-  
+  address String?
+
   // Preferences
   interestedClasses String[]
   howDidYouHear     String?
   notes             String?
-  
+
   // PDPA Consent (Taiwan)
-  consentDataCollection Boolean @default(false)
-  consentHealthData     Boolean @default(false)
-  consentPrivacyPolicy  Boolean @default(false)
+  consentDataCollection Boolean  @default(false)
+  consentHealthData     Boolean  @default(false)
+  consentPrivacyPolicy  Boolean  @default(false)
   consentTimestamp      DateTime @default(now())
-  
+
   // Processing
-  status            RegistrationStatus @default(PENDING)
-  processedById     String?
-  processedAt       DateTime?
-  processNotes      String?
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  status        RegistrationStatus @default(PENDING)
+  processedById String?
+  processedAt   DateTime?
+  processNotes  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status])
   @@map("registrations")
@@ -634,30 +639,30 @@ enum RegistrationStatus {
 // ======================
 
 model LessonPlan {
-  id          String   @id @default(uuid())
-  title       String
-  date        DateTime @db.Date
-  duration    Int      @default(90) // minutes
-  
+  id       String   @id @default(uuid())
+  title    String
+  date     DateTime @db.Date
+  duration Int      @default(90) // minutes
+
   // Content
-  objectives  String?
-  content     String?
-  materials   String?
-  homework    String?
-  notes       String?
-  
+  objectives String?
+  content    String?
+  materials  String?
+  homework   String?
+  notes      String?
+
   // Status
-  status      LessonStatus @default(SCHEDULED)
-  
+  status LessonStatus @default(SCHEDULED)
+
   // Relations
   classId     String
   createdById String
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 
-  class       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
-  createdBy   User     @relation("LessonCreator", fields: [createdById], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  class     Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  createdBy User  @relation("LessonCreator", fields: [createdById], references: [id])
 
   @@index([classId])
   @@index([date])
@@ -672,22 +677,22 @@ enum LessonStatus {
 }
 
 model TeachingMaterial {
-  id           String   @id @default(uuid())
-  title        String
-  type         String   @default("document") // document, video, flashcards, link, other
-  description  String?
-  url          String?
-  fileSize     Int?
-  
+  id          String  @id @default(uuid())
+  title       String
+  type        String  @default("document") // document, video, flashcards, link, other
+  description String?
+  url         String?
+  fileSize    Int?
+
   // Relations
   classId      String
   uploadedById String
-  
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
 
-  class        Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
-  uploadedBy   User     @relation("MaterialUploader", fields: [uploadedById], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  class      Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  uploadedBy User  @relation("MaterialUploader", fields: [uploadedById], references: [id])
 
   @@index([classId])
   @@index([type])
@@ -699,31 +704,31 @@ model TeachingMaterial {
 // ======================
 
 model Payment {
-  id              String        @id @default(uuid())
-  
-  // Transaction
-  merchantTradeNo String        @unique
-  gatewayTradeNo  String?
-  amount          Decimal       @db.Decimal(10, 2)
-  method          String        // credit_card, line_pay, atm, cvs
-  paymentType     String?       // Actual payment type from gateway
-  
-  // Status
-  status          PaymentStatus @default(PENDING)
-  errorMessage    String?
-  
-  // Timestamps
-  paidAt          DateTime?
-  
-  // Relations
-  invoiceId       String
-  studentId       String
-  
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id String @id @default(uuid())
 
-  invoice         Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  student         Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  // Transaction
+  merchantTradeNo String  @unique
+  gatewayTradeNo  String?
+  amount          Decimal @db.Decimal(10, 2)
+  method          String // credit_card, line_pay, atm, cvs
+  paymentType     String? // Actual payment type from gateway
+
+  // Status
+  status       PaymentStatus @default(PENDING)
+  errorMessage String?
+
+  // Timestamps
+  paidAt DateTime?
+
+  // Relations
+  invoiceId String
+  studentId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@index([invoiceId])
   @@index([status])
@@ -744,34 +749,34 @@ enum PaymentStatus {
 // ======================
 
 model PlatformInvoice {
-  id              String                @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Invoice details
-  invoiceNumber   String                @unique
+  invoiceNumber      String   @unique
   billingPeriodStart DateTime
   billingPeriodEnd   DateTime
-  
+
   // Calculation
   studentCount    Int
-  pricePerStudent Int                   @default(50)  // NT$
-  subtotal        Decimal               @db.Decimal(10, 2)
-  tax             Decimal               @default(0)   @db.Decimal(10, 2)
-  total           Decimal               @db.Decimal(10, 2)
-  
+  pricePerStudent Int     @default(50) // NT$
+  subtotal        Decimal @db.Decimal(10, 2)
+  tax             Decimal @default(0) @db.Decimal(10, 2)
+  total           Decimal @db.Decimal(10, 2)
+
   // Status
-  status          PlatformInvoiceStatus @default(PENDING)
-  dueDate         DateTime
-  paidAt          DateTime?
-  
+  status  PlatformInvoiceStatus @default(PENDING)
+  dueDate DateTime
+  paidAt  DateTime?
+
   // School relation
-  schoolId        String
-  school          School                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
   // Payments
-  payments        PlatformPayment[]
-  
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+  payments PlatformPayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([schoolId])
   @@index([status])
@@ -788,29 +793,29 @@ enum PlatformInvoiceStatus {
 }
 
 model PlatformPayment {
-  id              String                @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Transaction
-  stripePaymentId String?               @unique
-  amount          Decimal               @db.Decimal(10, 2)
-  method          String                @default("credit_card")
-  
+  stripePaymentId String? @unique
+  amount          Decimal @db.Decimal(10, 2)
+  method          String  @default("credit_card")
+
   // Status
-  status          PaymentStatus         @default(PENDING)
-  errorMessage    String?
-  
+  status       PaymentStatus @default(PENDING)
+  errorMessage String?
+
   // Timestamps
-  paidAt          DateTime?
-  
+  paidAt DateTime?
+
   // Relations
-  invoiceId       String
-  schoolId        String
-  
-  invoice         PlatformInvoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  school          School                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+  invoiceId String
+  schoolId  String
+
+  invoice PlatformInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  school  School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([invoiceId])
   @@index([schoolId])
@@ -823,43 +828,43 @@ model PlatformPayment {
 // ======================
 
 model TeacherProfile {
-  id              String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Employment Info
-  employeeId      String?  // Internal employee number
+  employeeId      String? // Internal employee number
   hireDate        DateTime?
   terminationDate DateTime?
-  employmentType  EmploymentType @default(FULL_TIME)
+  employmentType  EmploymentType   @default(FULL_TIME)
   status          EmploymentStatus @default(ACTIVE)
-  
+
   // Compensation
-  payType         PayType  @default(HOURLY)
-  hourlyRate      Decimal? @db.Decimal(10, 2)
-  monthlySalary   Decimal? @db.Decimal(10, 2)
-  
+  payType       PayType  @default(HOURLY)
+  hourlyRate    Decimal? @db.Decimal(10, 2)
+  monthlySalary Decimal? @db.Decimal(10, 2)
+
   // Banking (for payroll)
-  bankName        String?
-  bankAccount     String?
-  
+  bankName    String?
+  bankAccount String?
+
   // Emergency Contact
-  emergencyName   String?
-  emergencyPhone  String?
+  emergencyName     String?
+  emergencyPhone    String?
   emergencyRelation String?
-  
+
   // Notes
-  notes           String?
-  
+  notes String?
+
   // Relations
-  userId          String   @unique
-  schoolId        String
-  
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  school          School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  documents       Document[]
-  timesheets      Timesheet[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  userId   String @unique
+  schoolId String
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school     School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  documents  Document[]
+  timesheets Timesheet[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([schoolId])
   @@index([status])
@@ -886,32 +891,32 @@ enum PayType {
 }
 
 model Document {
-  id              String       @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Document Info
-  name            String
-  type            DocumentType
-  description     String?
-  
+  name        String
+  type        DocumentType
+  description String?
+
   // File
-  fileUrl         String
-  fileName        String
-  fileSize        Int          // bytes
-  mimeType        String
-  
+  fileUrl  String
+  fileName String
+  fileSize Int // bytes
+  mimeType String
+
   // Expiration (for certifications, contracts)
-  expiresAt       DateTime?
-  
+  expiresAt DateTime?
+
   // Relations
   teacherProfileId String
-  uploadedById    String
-  schoolId        String
-  
-  teacherProfile  TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
-  school          School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  uploadedById     String
+  schoolId         String
+
+  teacherProfile TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
+  school         School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([teacherProfileId])
   @@index([type])
@@ -929,36 +934,36 @@ enum DocumentType {
 }
 
 model Timesheet {
-  id              String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Time Entry
-  date            DateTime @db.Date
-  scheduledStart  String?  // "09:00"
-  scheduledEnd    String?  // "17:00"
-  actualStart     String?
-  actualEnd       String?
-  
+  date           DateTime @db.Date
+  scheduledStart String? // "09:00"
+  scheduledEnd   String? // "17:00"
+  actualStart    String?
+  actualEnd      String?
+
   // Hours
-  scheduledHours  Decimal  @db.Decimal(5, 2)
-  actualHours     Decimal? @db.Decimal(5, 2)
-  
+  scheduledHours Decimal  @db.Decimal(5, 2)
+  actualHours    Decimal? @db.Decimal(5, 2)
+
   // Status
-  status          TimesheetStatus @default(SCHEDULED)
-  
+  status TimesheetStatus @default(SCHEDULED)
+
   // Notes
-  notes           String?
-  
+  notes String?
+
   // Relations
   teacherProfileId String
-  classId         String?
-  schoolId        String
-  
-  teacherProfile  TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
-  class           Class?         @relation(fields: [classId], references: [id])
-  school          School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  classId          String?
+  schoolId         String
+
+  teacherProfile TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
+  class          Class?         @relation(fields: [classId], references: [id])
+  school         School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([teacherProfileId, date, classId])
   @@index([teacherProfileId])
@@ -979,32 +984,32 @@ enum TimesheetStatus {
 // ======================
 
 model PricingRule {
-  id              String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Rule Info
-  name            String
-  description     String?
-  
+  name        String
+  description String?
+
   // Pricing
-  priceType       PriceType @default(PER_CLASS)
-  amount          Decimal   @db.Decimal(10, 2)
-  
+  priceType PriceType @default(PER_CLASS)
+  amount    Decimal   @db.Decimal(10, 2)
+
   // Applicability
-  classId         String?  // null = applies to all classes
-  
+  classId String? // null = applies to all classes
+
   // Validity
-  validFrom       DateTime?
-  validUntil      DateTime?
-  isActive        Boolean  @default(true)
-  
+  validFrom  DateTime?
+  validUntil DateTime?
+  isActive   Boolean   @default(true)
+
   // Relations
-  schoolId        String
-  
-  school          School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  class           Class?   @relation(fields: [classId], references: [id])
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  schoolId String
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class  Class? @relation(fields: [classId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([schoolId])
   @@index([classId])
@@ -1012,45 +1017,45 @@ model PricingRule {
 }
 
 enum PriceType {
-  PER_CLASS       // Per class session attended
-  PER_MONTH       // Monthly flat fee
-  PER_SEMESTER    // Semester fee
-  PACKAGE         // Package deal
+  PER_CLASS // Per class session attended
+  PER_MONTH // Monthly flat fee
+  PER_SEMESTER // Semester fee
+  PACKAGE // Package deal
 }
 
 model Expense {
-  id              String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Expense Info
-  category        ExpenseCategory
-  description     String
-  
+  category    ExpenseCategory
+  description String
+
   // Amount
-  amount          Decimal  @db.Decimal(10, 2)
-  currency        String   @default("TWD")
-  
+  amount   Decimal @db.Decimal(10, 2)
+  currency String  @default("TWD")
+
   // Date
-  expenseDate     DateTime @db.Date
-  
+  expenseDate DateTime @db.Date
+
   // Receipt
-  receiptUrl      String?
-  
+  receiptUrl String?
+
   // Approval
-  status          ExpenseStatus @default(PENDING)
-  approvedById    String?
-  approvedAt      DateTime?
-  
+  status       ExpenseStatus @default(PENDING)
+  approvedById String?
+  approvedAt   DateTime?
+
   // Notes
-  notes           String?
-  
+  notes String?
+
   // Relations
-  schoolId        String
-  createdById     String
-  
-  school          School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  schoolId    String
+  createdById String
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([schoolId])
   @@index([category])
@@ -1079,33 +1084,33 @@ enum ExpenseStatus {
 }
 
 model Revenue {
-  id              String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Revenue Info
-  category        RevenueCategory
-  description     String
-  
+  category    RevenueCategory
+  description String
+
   // Amount
-  amount          Decimal  @db.Decimal(10, 2)
-  currency        String   @default("TWD")
-  
+  amount   Decimal @db.Decimal(10, 2)
+  currency String  @default("TWD")
+
   // Date
-  revenueDate     DateTime @db.Date
-  
+  revenueDate DateTime @db.Date
+
   // Source
-  invoiceId       String?  // Link to invoice if applicable
-  
+  invoiceId String? // Link to invoice if applicable
+
   // Notes
-  notes           String?
-  
+  notes String?
+
   // Relations
-  schoolId        String
-  createdById     String
-  
-  school          School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  schoolId    String
+  createdById String
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([schoolId])
   @@index([category])
@@ -1126,24 +1131,24 @@ enum RevenueCategory {
 // ======================
 
 model MessageAttachment {
-  id              String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // File Info
-  fileName        String
-  fileUrl         String
-  fileSize        Int      // bytes
-  mimeType        String
-  
+  fileName String
+  fileUrl  String
+  fileSize Int // bytes
+  mimeType String
+
   // Security
-  scannedAt       DateTime?
-  scanStatus      ScanStatus @default(PENDING)
-  
+  scannedAt  DateTime?
+  scanStatus ScanStatus @default(PENDING)
+
   // Relations
-  messageId       String
-  
-  message         Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime @default(now())
+  messageId String
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
 
   @@index([messageId])
   @@map("message_attachments")
@@ -1161,30 +1166,30 @@ enum ScanStatus {
 // ======================
 
 model EmailIntegration {
-  id              String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Provider
-  provider        EmailProvider
-  email           String
-  
+  provider EmailProvider
+  email    String
+
   // OAuth Tokens (encrypted in production)
-  accessToken     String?
-  refreshToken    String?
-  tokenExpiresAt  DateTime?
-  
+  accessToken    String?
+  refreshToken   String?
+  tokenExpiresAt DateTime?
+
   // Status
-  isActive        Boolean  @default(true)
-  lastSyncAt      DateTime?
-  
+  isActive   Boolean   @default(true)
+  lastSyncAt DateTime?
+
   // Relations
-  userId          String
-  schoolId        String
-  
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  school          School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  userId   String
+  schoolId String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([userId, provider])
   @@index([schoolId])
@@ -1195,4 +1200,133 @@ enum EmailProvider {
   GMAIL
   OUTLOOK
   YAHOO
+}
+
+// ======================
+// BEHAVIOR SYSTEM (Added for behavior tracking feature)
+// ======================
+
+// Schools define their own scoring scales (e.g., 1-5 stars, 1-10 points)
+model BehaviorScale {
+  id String @id @default(uuid())
+
+  // Scale names in both languages
+  name        String // English name, e.g., "5-Point Scale"
+  nameChinese String? // Chinese name, e.g., "五分制"
+
+  // The range of the scale
+  minValue Int @default(1) // Usually 1
+  maxValue Int @default(5) // e.g., 5 for a 5-point scale
+
+  // Labels for each score value (stored as JSON)
+  // Example: {"1": "Poor", "2": "Needs Work", "3": "OK", "4": "Good", "5": "Excellent"}
+  labels        Json? @default("{}")
+  labelsChinese Json? @default("{}")
+
+  // Colors for each score value (for the UI)
+  // Example: {"1": "#ef4444", "2": "#f97316", "3": "#eab308", "4": "#22c55e", "5": "#10b981"}
+  colors Json? @default("{}")
+
+  // Settings
+  isDefault Boolean @default(false) // Is this the default scale for the school?
+  isActive  Boolean @default(true) // Soft delete - set to false instead of deleting
+
+  // Which school owns this scale
+  schoolId String
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  school     School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  categories BehaviorCategory[]
+
+  @@index([schoolId])
+  @@map("behavior_scales") // The actual table name in the database
+}
+
+// Behavior categories that teachers can score (e.g., Effort, Engagement, Focus)
+model BehaviorCategory {
+  id String @id @default(uuid())
+
+  // Category names in both languages
+  name        String // English name, e.g., "Effort"
+  nameChinese String? // Chinese name, e.g., "努力程度"
+
+  // Optional descriptions
+  description        String?
+  descriptionChinese String?
+
+  // Visual settings for the UI
+  icon  String? // Icon name from Lucide, e.g., "star", "zap", "target"
+  color String? // Hex color, e.g., "#3b82f6"
+
+  // Which scoring scale this category uses
+  scaleId String
+
+  // Display order (0 = first, 1 = second, etc.)
+  sortOrder Int @default(0)
+
+  // Settings
+  isActive Boolean @default(true)
+
+  // Which school owns this category
+  schoolId String
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  scale   BehaviorScale    @relation(fields: [scaleId], references: [id], onDelete: Cascade)
+  school  School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  records BehaviorRecord[]
+
+  @@index([schoolId])
+  @@index([scaleId])
+  @@map("behavior_categories")
+}
+
+// Individual behavior scores (one per student, per class, per category, per day)
+model BehaviorRecord {
+  id String @id @default(uuid())
+
+  // The date this score is for
+  date DateTime @db.Date
+
+  // The actual score (e.g., 1, 2, 3, 4, or 5)
+  score Int
+
+  // Optional notes from the teacher
+  notes String?
+
+  // Who recorded this score and when
+  recordedById String
+  recordedAt   DateTime @default(now())
+
+  // Parent notification tracking (for future use)
+  parentNotified   Boolean   @default(false)
+  parentNotifiedAt DateTime?
+
+  // Foreign keys
+  categoryId String // Which behavior category
+  classId    String // Which class
+  studentId  String // Which student
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  category   BehaviorCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  class      Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student    Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  recordedBy User             @relation("BehaviorRecordedBy", fields: [recordedById], references: [id])
+
+  // Ensure only one score per student per category per class per day
+  @@unique([categoryId, classId, studentId, date])
+  @@index([classId, date])
+  @@index([studentId, date])
+  @@map("behavior_records")
 }

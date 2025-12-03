@@ -42,6 +42,7 @@ import uploadRoutes from './routes/upload.js';
 import emailRoutes from './routes/email.js';
 import analyticsRoutes from './routes/analytics.js';
 import prisma from './config/database.js';
+import behaviorRoutes from './routes/behavior.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -156,6 +157,7 @@ app.use('/api/finance', financeRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/behavior', behaviorRoutes);
 
 // LINE Webhook (separate path for raw body handling)
 app.use('/api/webhook/line', lineWebhook);

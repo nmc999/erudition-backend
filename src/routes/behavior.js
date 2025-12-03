@@ -57,7 +57,7 @@ router.get('/scales/:id', authenticate, async (req, res) => {
 })
 
 // POST /api/behavior/scales - Create new scale (Admin only)
-router.post('/scales', authenticate, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+router.post('/scales', authenticate, authorize('ADMIN', 'MANAGER'), async (req, res) => {
   try {
     const { name, nameChinese, minValue, maxValue, labels, labelsChinese, colors, isDefault } = req.body
 
@@ -99,7 +99,7 @@ router.post('/scales', authenticate, authorize(['ADMIN', 'MANAGER']), async (req
 })
 
 // PUT /api/behavior/scales/:id - Update scale (Admin only)
-router.put('/scales/:id', authenticate, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+router.put('/scales/:id', authenticate, authorize('ADMIN', 'MANAGER'), async (req, res) => {
   try {
     const { name, nameChinese, minValue, maxValue, labels, labelsChinese, colors, isDefault, isActive } = req.body
 
@@ -143,7 +143,7 @@ router.put('/scales/:id', authenticate, authorize(['ADMIN', 'MANAGER']), async (
 })
 
 // DELETE /api/behavior/scales/:id - Delete scale (Admin only)
-router.delete('/scales/:id', authenticate, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+router.delete('/scales/:id', authenticate, authorize('ADMIN', 'MANAGER'), async (req, res) => {
   try {
     // Verify scale belongs to school
     const existing = await prisma.behaviorScale.findFirst({
@@ -193,7 +193,7 @@ router.get('/categories', authenticate, async (req, res) => {
 })
 
 // POST /api/behavior/categories - Create new category (Admin only)
-router.post('/categories', authenticate, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+router.post('/categories', authenticate, authorize('ADMIN', 'MANAGER'), async (req, res) => {
   try {
     const { name, nameChinese, description, descriptionChinese, icon, color, scaleId, sortOrder } = req.body
 
@@ -239,7 +239,7 @@ router.post('/categories', authenticate, authorize(['ADMIN', 'MANAGER']), async 
 })
 
 // PUT /api/behavior/categories/:id - Update category (Admin only)
-router.put('/categories/:id', authenticate, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+router.put('/categories/:id', authenticate, authorize('ADMIN', 'MANAGER'), async (req, res) => {
   try {
     const { name, nameChinese, description, descriptionChinese, icon, color, scaleId, sortOrder, isActive } = req.body
 
@@ -288,7 +288,7 @@ router.put('/categories/:id', authenticate, authorize(['ADMIN', 'MANAGER']), asy
 })
 
 // DELETE /api/behavior/categories/:id - Delete category (Admin only)
-router.delete('/categories/:id', authenticate, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+router.delete('/categories/:id', authenticate, authorize('ADMIN', 'MANAGER'), async (req, res) => {
   try {
     const existing = await prisma.behaviorCategory.findFirst({
       where: { id: req.params.id, schoolId: req.user.schoolId }
@@ -436,7 +436,7 @@ router.get('/records/class/:classId/date/:date', authenticate, async (req, res) 
 })
 
 // POST /api/behavior/records - Create or update behavior record
-router.post('/records', authenticate, authorize(['ADMIN', 'MANAGER', 'TEACHER']), async (req, res) => {
+router.post('/records', authenticate, authorize('ADMIN', 'MANAGER', 'TEACHER'), async (req, res) => {
   try {
     const { categoryId, classId, studentId, date, score, notes } = req.body
 
@@ -521,7 +521,7 @@ router.post('/records', authenticate, authorize(['ADMIN', 'MANAGER', 'TEACHER'])
 })
 
 // POST /api/behavior/records/bulk - Bulk create/update records
-router.post('/records/bulk', authenticate, authorize(['ADMIN', 'MANAGER', 'TEACHER']), async (req, res) => {
+router.post('/records/bulk', authenticate, authorize('ADMIN', 'MANAGER', 'TEACHER'), async (req, res) => {
   try {
     const { classId, date, records } = req.body
     // records: [{ studentId, categoryId, score, notes }, ...]

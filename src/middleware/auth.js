@@ -10,6 +10,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-producti
  * Verify JWT token and attach user to request
  */
 export const authenticate = async (req, res, next) => {
+  console.log('Auth check - headers:', req.headers.authorization ? 'Bearer token present' : 'NO AUTH HEADER') //debug
   try {
     // Get token from header
     const authHeader = req.headers.authorization;

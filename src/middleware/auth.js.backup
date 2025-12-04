@@ -1,57 +1,22 @@
-// src/middleware/auth.js
-// Authentication Middleware - Optimized for performance
-// User data is cached in JWT to avoid DB lookups on every request
+// Authentication Middleware
+// Verifies JWT tokens and attaches user info to request
 
 import jwt from 'jsonwebtoken';
 import prisma from '../config/database.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const DEBUG = process.env.DEBUG === 'true';
-
-/**
- * Generate access token with user data embedded
- */
-export const generateToken = (user) => {
-  return jwt.sign(
-    {
-      userId: user.id,
-      user: {
-        id: user.id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        schoolId: user.schoolId,
-        preferredLang: user.preferredLang,
-        isActive: user.isActive,
-        isSuperAdmin: user.isSuperAdmin || false
-      }
-    },
-    JWT_SECRET,
-    { expiresIn: '7d' }
-  );
-};
-
-/**
- * Generate refresh token (just userId, no user data)
- */
-export const generateRefreshToken = (userId) => {
-  return jwt.sign(
-    { userId, type: 'refresh' },
-    JWT_SECRET,
-    { expiresIn: '30d' }
-  );
-};
 
 /**
  * Verify JWT token and attach user to request
- * Uses cached user data from JWT - no DB lookup required!
  */
 export const authenticate = async (req, res, next) => {
+  console.log('Auth check - headers:', req.headers.authorization ? 'Bearer token present' : 'NO AUTH HEADER') //debug
   try {
+    // Get token from header
     const authHeader = req.headers.authorization;
-
+    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('Auth FAIL: No bearer token') //debug
       return res.status(401).json({
         success: false,
         error: {
@@ -63,27 +28,13 @@ export const authenticate = async (req, res, next) => {
     }
 
     const token = authHeader.split(' ')[1];
+    console.log('Auth: Token extracted, verifying...') //debug
+
+    // Verify token
     const decoded = jwt.verify(token, JWT_SECRET);
+    console.log('Auth: Token verified, userId:', decoded.userId) //debug
 
-    // Use cached user data from JWT (fast path - no DB query!)
-    if (decoded.user) {
-      if (!decoded.user.isActive) {
-        return res.status(403).json({
-          success: false,
-          error: {
-            code: 'ACCOUNT_DISABLED',
-            message: 'Account is disabled',
-            messageZh: '帳戶已停用'
-          }
-        });
-      }
-      req.user = decoded.user;
-      return next();
-    }
-
-    // Fallback for old tokens without cached user data
-    if (DEBUG) console.log('[AUTH] Old token format, fetching user from DB');
-    
+    // Get user from database
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       select: {
@@ -95,9 +46,12 @@ export const authenticate = async (req, res, next) => {
         schoolId: true,
         preferredLang: true,
         isActive: true,
+        lineUserId: true,
         isSuperAdmin: true
       }
     });
+
+    console.log('Auth: User lookup result:', user ? 'found' : 'NOT FOUND') //debug
 
     if (!user) {
       return res.status(401).json({
@@ -121,19 +75,32 @@ export const authenticate = async (req, res, next) => {
       });
     }
 
+    // Attach user to request
     req.user = user;
     next();
   } catch (error) {
-    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+    if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({
         success: false,
         error: {
           code: 'INVALID_TOKEN',
-          message: 'Invalid or expired access token',
-          messageZh: '無效或過期的存取權杖'
+          message: 'Invalid access token',
+          messageZh: '無效的存取權杖'
         }
       });
     }
+
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'TOKEN_EXPIRED',
+          message: 'Access token has expired',
+          messageZh: '存取權杖已過期'
+        }
+      });
+    }
+
     next(error);
   }
 };
@@ -144,7 +111,7 @@ export const authenticate = async (req, res, next) => {
 export const optionalAuth = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-
+    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return next();
     }
@@ -152,13 +119,6 @@ export const optionalAuth = async (req, res, next) => {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET);
 
-    // Use cached user data from JWT
-    if (decoded.user && decoded.user.isActive) {
-      req.user = decoded.user;
-      return next();
-    }
-
-    // Fallback for old tokens
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       select: {
@@ -222,22 +182,19 @@ export const authorize = (...roles) => {
  */
 export const verifySchoolAccess = (req, res, next) => {
   const schoolId = req.params.schoolId || req.body.schoolId || req.query.schoolId;
-
+  
   if (!schoolId) {
     return next();
   }
 
-  if (req.user.isSuperAdmin) {
-    return next();
-  }
-
+  // Admins can only access their own school
   if (req.user.schoolId !== schoolId) {
     return res.status(403).json({
       success: false,
       error: {
         code: 'SCHOOL_ACCESS_DENIED',
-        message: 'Access denied to this school',
-        messageZh: '無權訪問此學校'
+        message: 'You do not have access to this school',
+        messageZh: '您沒有此學校的存取權限'
       }
     });
   }
@@ -245,10 +202,24 @@ export const verifySchoolAccess = (req, res, next) => {
   next();
 };
 
-export default {
-  authenticate,
-  optionalAuth,
-  authorize,
+/**
+ * Generate JWT token for user
+ */
+export const generateToken = (userId, expiresIn = '7d') => {
+  return jwt.sign({ userId }, JWT_SECRET, { expiresIn });
+};
+
+/**
+ * Generate refresh token
+ */
+export const generateRefreshToken = (userId) => {
+  return jwt.sign({ userId, type: 'refresh' }, JWT_SECRET, { expiresIn: '30d' });
+};
+
+export default { 
+  authenticate, 
+  optionalAuth, 
+  authorize, 
   verifySchoolAccess,
   generateToken,
   generateRefreshToken

@@ -76,6 +76,8 @@ model School {
   emailIntegrations  EmailIntegration[]
   behaviorScales     BehaviorScale[]
   behaviorCategories BehaviorCategory[]
+  pointTypes      PointType[]
+  assessments     Assessment[]
 
   @@map("schools")
 }
@@ -132,6 +134,9 @@ model User {
   teacherProfile    TeacherProfile?
   emailIntegrations EmailIntegration[]
   behaviorRecorded  BehaviorRecord[]     @relation("BehaviorRecordedBy")
+  pointsAwarded      PointRecord[]     @relation("PointsAwarded")
+  assessmentsCreated Assessment[]      @relation("AssessmentCreator")
+  scoresGraded       AssessmentScore[] @relation("ScoreGrader")
 
   @@index([schoolId])
   @@index([lineUserId])
@@ -196,6 +201,8 @@ model Student {
   invoices            Invoice[]
   payments            Payment[]
   behaviorRecords     BehaviorRecord[]
+  pointRecords      PointRecord[]
+  assessmentScores  AssessmentScore[]
 
   @@index([schoolId])
   @@index([status])
@@ -265,6 +272,8 @@ model Class {
   timesheets      Timesheet[]
   pricingRules    PricingRule[]
   behaviorRecords BehaviorRecord[]
+  pointRecords PointRecord[]
+  assessments  Assessment[]
 
   @@index([schoolId])
   @@index([teacherId])
@@ -1330,3 +1339,203 @@ model BehaviorRecord {
   @@index([studentId, date])
   @@map("behavior_records")
 }
+
+// ======================
+// POINTS SYSTEM (Classroom reward points)
+// ======================
+
+// Point types/categories that can be awarded (e.g., "Good Behavior", "Homework Excellence")
+model PointType {
+  id String @id @default(uuid())
+
+  // Names in both languages
+  name        String // English name
+  nameChinese String? // Chinese name
+
+  // Point value (can be negative for deductions)
+  defaultPoints Int @default(1)
+
+  // Visual settings
+  icon  String? // Lucide icon name
+  color String? // Hex color
+
+  // Settings
+  isActive Boolean @default(true)
+
+  // Multi-tenancy
+  schoolId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  school  School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  records PointRecord[]
+
+  @@index([schoolId])
+  @@map("point_types")
+}
+
+// Individual point awards/deductions
+model PointRecord {
+  id String @id @default(uuid())
+
+  // Points awarded (positive) or deducted (negative)
+  points Int
+
+  // Reason/notes
+  reason        String?
+  reasonChinese String?
+
+  // Who awarded the points
+  awardedById String
+  awardedAt   DateTime @default(now())
+
+  // Foreign keys
+  pointTypeId String
+  studentId   String
+  classId     String? // Optional - can award points outside of class context
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  pointType PointType @relation(fields: [pointTypeId], references: [id], onDelete: Cascade)
+  student   Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class     Class?    @relation(fields: [classId], references: [id])
+  awardedBy User      @relation("PointsAwarded", fields: [awardedById], references: [id])
+
+  @@index([studentId])
+  @@index([classId])
+  @@index([awardedAt])
+  @@map("point_records")
+}
+
+// ======================
+// ASSESSMENTS (Tests, Quizzes, Exams)
+// ======================
+
+// Assessment definition (the test/quiz itself)
+model Assessment {
+  id String @id @default(uuid())
+
+  // Basic info
+  name        String // e.g., "Midterm Exam"
+  nameChinese String?
+  description String?
+
+  // Type of assessment
+  type AssessmentType @default(TEST)
+
+  // Scoring
+  maxScore     Int      @default(100)
+  passingScore Int? // Optional passing threshold
+  weight       Decimal? @db.Decimal(3, 2) // Weight for grade calculation (0.00-1.00)
+
+  // Date
+  assessmentDate DateTime? @db.Date
+
+  // Which class this is for
+  classId String
+
+  // Who created it
+  createdById String
+
+  // Settings
+  isPublished Boolean @default(false) // Whether parents can see it
+
+  // Multi-tenancy
+  schoolId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  school    School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class     Class             @relation(fields: [classId], references: [id], onDelete: Cascade)
+  createdBy User              @relation("AssessmentCreator", fields: [createdById], references: [id])
+  scores    AssessmentScore[]
+
+  @@index([schoolId])
+  @@index([classId])
+  @@index([assessmentDate])
+  @@map("assessments")
+}
+
+enum AssessmentType {
+  QUIZ // Short quiz
+  TEST // Regular test
+  MIDTERM // Midterm exam
+  FINAL // Final exam
+  HOMEWORK // Graded homework
+  PROJECT // Project
+  OTHER
+}
+
+// Individual student scores on an assessment
+model AssessmentScore {
+  id String @id @default(uuid())
+
+  // The score
+  score    Decimal @db.Decimal(6, 2) // Allows for partial points
+  maxScore Int // Store max score at time of grading (in case assessment changes)
+
+  // Optional percentage (calculated)
+  percentage Decimal? @db.Decimal(5, 2)
+
+  // Feedback
+  feedback        String?
+  feedbackChinese String?
+
+  // File attachment (scanned test, etc.) - 5MB limit enforced in API
+  fileUrl  String?
+  fileName String?
+  fileSize Int? // bytes
+
+  // Who graded it
+  gradedById String
+  gradedAt   DateTime @default(now())
+
+  // Parent notification
+  parentNotified   Boolean   @default(false)
+  parentNotifiedAt DateTime?
+
+  // Foreign keys
+  assessmentId String
+  studentId    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student    Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  gradedBy   User       @relation("ScoreGrader", fields: [gradedById], references: [id])
+
+  // One score per student per assessment
+  @@unique([assessmentId, studentId])
+  @@index([studentId])
+  @@map("assessment_scores")
+}
+
+
+// ======================
+// ADDITIONS TO EXISTING MODELS
+// ======================
+
+// Add to School model:
+//   pointTypes      PointType[]
+//   assessments     Assessment[]
+
+// Add to User model:
+//   pointsAwarded     PointRecord[]    @relation("PointsAwarded")
+//   assessmentsCreated Assessment[]    @relation("AssessmentCreator")
+//   scoresGraded      AssessmentScore[] @relation("ScoreGrader")
+
+// Add to Student model:
+//   pointRecords      PointRecord[]
+//   assessmentScores  AssessmentScore[]
+
+// Add to Class model:
+//   pointRecords PointRecord[]
+//   assessments  Assessment[]
+

@@ -43,6 +43,9 @@ import emailRoutes from './routes/email.js';
 import analyticsRoutes from './routes/analytics.js';
 import prisma from './config/database.js';
 import behaviorRoutes from './routes/behavior.js';
+import parentPortalRoutes from './routes/parentPortal.js';
+import pointsRoutes from './routes/points.js';
+import assessmentsRoutes from './routes/assessments.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -105,6 +108,9 @@ app.use(morgan('dev'));
 app.use('/api/webhook/line', express.raw({ type: 'application/json' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/api/parent', parentPortalRoutes);
+app.use('/api/points', pointsRoutes);
+app.use('/api/assessments', assessmentsRoutes);
 
 // ======================
 // ROUTES

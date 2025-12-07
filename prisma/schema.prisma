@@ -78,6 +78,8 @@ model School {
   behaviorCategories BehaviorCategory[]
   pointTypes      PointType[]
   assessments     Assessment[]
+  calendarEvents     CalendarEvent[]
+  tourBookings       TourBooking[]
 
   @@map("schools")
 }
@@ -137,6 +139,9 @@ model User {
   pointsAwarded      PointRecord[]     @relation("PointsAwarded")
   assessmentsCreated Assessment[]      @relation("AssessmentCreator")
   scoresGraded       AssessmentScore[] @relation("ScoreGrader")
+  eventsCreated      CalendarEvent[]    @relation("EventCreator")
+  toursAssigned      TourBooking[]      @relation("TourAssignee")
+  notesAuthored      StudentNote[]      @relation("NoteAuthor")
 
   @@index([schoolId])
   @@index([lineUserId])
@@ -203,6 +208,8 @@ model Student {
   behaviorRecords     BehaviorRecord[]
   pointRecords      PointRecord[]
   assessmentScores  AssessmentScore[]
+  tourEnrollments    TourBooking[]
+  studentNotes       StudentNote[]
 
   @@index([schoolId])
   @@index([status])
@@ -274,6 +281,7 @@ model Class {
   behaviorRecords BehaviorRecord[]
   pointRecords PointRecord[]
   assessments  Assessment[]
+  eventImpacts       EventClassImpact[]
 
   @@index([schoolId])
   @@index([teacherId])
@@ -1539,3 +1547,151 @@ model AssessmentScore {
 //   pointRecords PointRecord[]
 //   assessments  Assessment[]
 
+// ======================
+// CALENDAR & EVENTS
+// ======================
+
+model CalendarEvent {
+  id                 String    @id @default(uuid())
+  schoolId           String
+  name               String
+  nameChinese        String?
+  type               EventType
+  description        String?
+  descriptionChinese String?
+  startDate          DateTime
+  endDate            DateTime
+  isAllDay           Boolean   @default(true)
+  affectsAll         Boolean   @default(false)
+  createdById        String
+  notifyParents      Boolean   @default(false)
+  notifySent         Boolean   @default(false)
+  notifySentAt       DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  school       School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdBy    User               @relation("EventCreator", fields: [createdById], references: [id])
+  classImpacts EventClassImpact[]
+  tours        TourBooking[]
+
+  @@index([schoolId])
+  @@index([startDate, endDate])
+  @@map("calendar_events")
+}
+
+enum EventType {
+  HOLIDAY
+  PERFORMANCE
+  FAIR
+  PARENT_MEETING
+  ASSESSMENT_WEEK
+  TOUR_SLOT
+  CUSTOM
+}
+
+model EventClassImpact {
+  id           String         @id @default(uuid())
+  eventId      String
+  classId      String
+  impact       ScheduleImpact
+  newTime      String?
+  notes        String?
+  notesChinese String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  event CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  class Class         @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, classId])
+  @@index([eventId])
+  @@index([classId])
+  @@map("event_class_impacts")
+}
+
+enum ScheduleImpact {
+  CANCELLED
+  RESCHEDULED
+  MODIFIED
+  NORMAL
+}
+
+// ======================
+// TOUR BOOKINGS
+// ======================
+
+model TourBooking {
+  id                  String     @id @default(uuid())
+  schoolId            String
+  eventId             String?
+  prospectName        String
+  prospectNameChinese String?
+  prospectPhone       String?
+  prospectEmail       String?
+  childName           String?
+  childNameChinese    String?
+  childAge            Int?
+  currentSchool       String?
+  interestedLevel     String?
+  interestedProgram   String?
+  scheduledAt         DateTime
+  assignedToId        String?
+  status              TourStatus @default(SCHEDULED)
+  notes               String?
+  followUpDate        DateTime?
+  enrolledStudentId   String?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  school          School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  event           CalendarEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  assignedTo      User?          @relation("TourAssignee", fields: [assignedToId], references: [id])
+  enrolledStudent Student?       @relation(fields: [enrolledStudentId], references: [id])
+
+  @@index([schoolId])
+  @@index([scheduledAt])
+  @@index([status])
+  @@map("tour_bookings")
+}
+
+enum TourStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  ENROLLED
+}
+
+// ======================
+// STUDENT NOTES
+// ======================
+
+model StudentNote {
+  id             String       @id @default(uuid())
+  studentId      String
+  authorId       String
+  category       NoteCategory
+  title          String?
+  content        String
+  contentChinese String?
+  isPrivate      Boolean      @default(false)
+  isPinned       Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  author  User    @relation("NoteAuthor", fields: [authorId], references: [id])
+
+  @@index([studentId])
+  @@index([category])
+  @@map("student_notes")
+}
+
+enum NoteCategory {
+  ACADEMIC
+  BEHAVIORAL
+  PARENTAL
+  MEDICAL
+  GENERAL
+}

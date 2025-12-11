@@ -1,520 +1,429 @@
-// LINE Webhook Handler
-// Processes incoming LINE messages and events
+// Messages Routes
+// Two-way messaging with LINE integration
 
-import { Router } from 'express';
+import express from 'express';
 import prisma from '../config/database.js';
-import lineService from '../services/lineService.js';
-import translationService from '../services/translationService.js';
+import { authenticate, authorize } from '../middleware/auth.js';
 
-const router = Router();
+const router = express.Router();
+
+router.use(authenticate);
+
+// ======================
+// HELPER FUNCTIONS
+// ======================
 
 /**
- * POST /api/webhook/line
- * Receive LINE webhook events
- * Note: Body is raw buffer for signature verification
+ * Send LINE message using school credentials
  */
-router.post('/', async (req, res) => {
-  // Get signature from header
-  const signature = req.headers['x-line-signature'];
-  
-  if (!signature) {
-    console.log('Missing LINE signature');
-    return res.status(401).json({ error: 'Missing signature' });
+const sendLineMessage = async (schoolId, lineUserId, text) => {
+  const school = await prisma.school.findUnique({
+    where: { id: schoolId },
+    select: { lineAccessToken: true }
+  });
+
+  if (!school?.lineAccessToken) {
+    console.error('No LINE access token for school');
+    return false;
   }
 
-  // Get raw body as string for signature verification
-  const body = req.body.toString();
-
-  // Verify signature
-  if (!lineService.verifyWebhookSignature(body, signature)) {
-    console.log('Invalid LINE signature');
-    return res.status(401).json({ error: 'Invalid signature' });
-  }
-
-  // Parse the body
-  let events;
   try {
-    const parsed = JSON.parse(body);
-    events = parsed.events || [];
-  } catch (error) {
-    console.error('Failed to parse LINE webhook body:', error);
-    return res.status(400).json({ error: 'Invalid JSON' });
-  }
+    const response = await fetch('https://api.line.me/v2/bot/message/push', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${school.lineAccessToken}`
+      },
+      body: JSON.stringify({
+        to: lineUserId,
+        messages: [{ type: 'text', text }]
+      })
+    });
 
-  // Respond immediately to LINE (they expect 200 within 1 second)
-  res.status(200).json({ success: true });
-
-  // Process events asynchronously
-  for (const event of events) {
-    try {
-      await handleLineEvent(event);
-    } catch (error) {
-      console.error('Error handling LINE event:', error);
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('LINE push failed:', error);
+      return false;
     }
+
+    return true;
+  } catch (error) {
+    console.error('LINE send error:', error);
+    return false;
+  }
+};
+
+/**
+ * Simple language detection
+ */
+const detectLanguage = (text) => {
+  const chineseRegex = /[\u4e00-\u9fff]/;
+  return chineseRegex.test(text) ? 'zh-TW' : 'en';
+};
+
+// ======================
+// CONVERSATIONS
+// ======================
+
+// GET /api/messages/conversations - Get all conversations
+router.get('/conversations', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const schoolId = req.user.schoolId;
+    const isStaff = ['ADMIN', 'MANAGER', 'TEACHER'].includes(req.user.role);
+
+    // Get all messages involving this user
+    const messages = await prisma.message.findMany({
+      where: {
+        OR: [
+          { senderId: userId },
+          { recipientId: userId },
+          // Staff can see all LINE messages for their school
+          ...(isStaff ? [
+            {
+              sender: { schoolId },
+              threadId: { startsWith: 'line-' }
+            },
+            {
+              sender: { schoolId },
+              sentViaLine: true
+            }
+          ] : [])
+        ]
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+            lineDisplayName: true,
+            lineProfileUrl: true,
+            lineUserId: true
+          }
+        },
+        recipient: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+            lineDisplayName: true,
+            lineProfileUrl: true,
+            lineUserId: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // Group by conversation (threadId or sender-recipient pair)
+    const conversationsMap = new Map();
+
+    for (const msg of messages) {
+      // Determine conversation key
+      let convKey;
+      let otherUser;
+
+      if (msg.threadId?.startsWith('line-')) {
+        // LINE conversation - group by threadId
+        convKey = msg.threadId;
+        // The "other user" is the parent (the LINE user)
+        const parentId = msg.threadId.replace('line-', '');
+        otherUser = msg.senderId === parentId ? msg.sender : msg.recipient;
+        if (!otherUser || otherUser.id !== parentId) {
+          // Find the parent user
+          otherUser = msg.sender?.role === 'PARENT' ? msg.sender : msg.recipient;
+        }
+      } else if (msg.sentViaLine) {
+        // LINE message without threadId - group by parent user
+        const parent = msg.sender?.role === 'PARENT' ? msg.sender : msg.recipient;
+        if (parent) {
+          convKey = `line-${parent.id}`;
+          otherUser = parent;
+        }
+      } else {
+        // Regular conversation - group by user pair
+        const otherId = msg.senderId === userId ? msg.recipientId : msg.senderId;
+        convKey = [userId, otherId].sort().join('-');
+        otherUser = msg.senderId === userId ? msg.recipient : msg.sender;
+      }
+
+      if (!convKey || !otherUser) continue;
+
+      if (!conversationsMap.has(convKey)) {
+        conversationsMap.set(convKey, {
+          id: convKey,
+          threadId: msg.threadId,
+          otherUser: {
+            id: otherUser.id,
+            name: `${otherUser.lastName}${otherUser.firstName}`,
+            firstName: otherUser.firstName,
+            lastName: otherUser.lastName,
+            role: otherUser.role,
+            lineDisplayName: otherUser.lineDisplayName,
+            lineProfileUrl: otherUser.lineProfileUrl,
+            hasLine: !!otherUser.lineUserId
+          },
+          lastMessage: msg.originalText,
+          lastMessageAt: msg.createdAt,
+          isLine: msg.threadId?.startsWith('line-') || msg.sentViaLine,
+          unreadCount: 0
+        });
+      }
+
+      // Count unread
+      if (!msg.readAt && msg.recipientId === userId) {
+        const conv = conversationsMap.get(convKey);
+        conv.unreadCount++;
+      }
+    }
+
+    // Sort by last message time
+    const conversations = Array.from(conversationsMap.values())
+      .sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
+
+    res.json(conversations);
+  } catch (error) {
+    console.error('Get conversations error:', error);
+    res.status(500).json({ error: 'Failed to fetch conversations' });
   }
 });
 
-/**
- * Handle individual LINE event
- */
-async function handleLineEvent(event) {
-  console.log('LINE Event:', event.type, event);
-
-  switch (event.type) {
-    case 'message':
-      await handleMessageEvent(event);
-      break;
-      
-    case 'follow':
-      await handleFollowEvent(event);
-      break;
-      
-    case 'unfollow':
-      await handleUnfollowEvent(event);
-      break;
-      
-    case 'postback':
-      await handlePostbackEvent(event);
-      break;
-      
-    default:
-      console.log('Unhandled event type:', event.type);
-  }
-}
-
-/**
- * Handle incoming message from LINE
- */
-async function handleMessageEvent(event) {
-  const { source, message, replyToken } = event;
-  const lineUserId = source.userId;
-
-  if (!lineUserId) {
-    console.log('No userId in message event');
-    return;
-  }
-
-  // Find user by LINE ID
-  const user = await prisma.user.findUnique({
-    where: { lineUserId },
-    include: {
-      school: {
-        select: { id: true, name: true }
-      }
-    }
-  });
-
-  if (!user) {
-    // User not registered - send welcome/registration message
-    await lineService.sendReplyMessage(replyToken, [
-      {
-        type: 'text',
-        text: '您好！歡迎使用 Erudition 教育管理系統。\n\n' +
-              'Hello! Welcome to Erudition Education Management System.\n\n' +
-              '請先透過網頁或應用程式完成註冊，然後連結您的 LINE 帳號。\n' +
-              'Please register through our website or app first, then link your LINE account.'
-      }
-    ]);
-    return;
-  }
-
-  // Handle text messages
-  if (message.type === 'text') {
-    await handleTextMessage(user, message.text, replyToken);
-  } else if (message.type === 'image') {
-    await handleImageMessage(user, message, replyToken);
-  } else {
-    // Unsupported message type
-    await lineService.sendReplyMessage(replyToken, {
-      type: 'text',
-      text: '目前僅支援文字訊息。\nCurrently only text messages are supported.'
-    });
-  }
-}
-
-/**
- * Handle text message from user
- */
-async function handleTextMessage(user, text, replyToken) {
-  const lowerText = text.toLowerCase().trim();
-
-  // Check for commands
-  if (lowerText === '出席' || lowerText === 'attendance') {
-    await sendAttendanceSummary(user, replyToken);
-    return;
-  }
-
-  if (lowerText === '作業' || lowerText === 'homework') {
-    await sendHomeworkSummary(user, replyToken);
-    return;
-  }
-
-  if (lowerText === '幫助' || lowerText === 'help') {
-    await sendHelpMessage(user, replyToken);
-    return;
-  }
-
-  // Regular message - forward to school/teacher
-  // Detect language and translate
-  const sourceLang = translationService.detectLanguage(text);
-  const targetLang = sourceLang === 'zh-TW' ? 'en' : 'zh-TW';
-  
-  let translatedText = null;
+// GET /api/messages/conversation/:id - Get messages in a conversation
+router.get('/conversation/:id', async (req, res) => {
   try {
-    translatedText = await translationService.translateText(text, sourceLang, targetLang);
-  } catch (error) {
-    console.error('Translation error:', error);
-  }
+    const userId = req.user.id;
+    const convId = req.params.id;
+    const isStaff = ['ADMIN', 'MANAGER', 'TEACHER'].includes(req.user.role);
 
-  // If parent, find their children's teachers
-  if (user.role === 'PARENT') {
-    const parentStudents = await prisma.parentStudent.findMany({
-      where: { parentId: user.id },
-      include: {
-        student: {
-          include: {
-            enrollments: {
-              where: { status: 'ACTIVE' },
-              include: {
-                class: {
-                  include: {
-                    teacher: {
-                      select: { id: true, firstName: true, lastName: true }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    });
+    let whereClause;
 
-    // Get unique teachers
-    const teachers = new Map();
-    parentStudents.forEach(ps => {
-      ps.student.enrollments.forEach(e => {
-        if (e.class.teacher) {
-          teachers.set(e.class.teacher.id, e.class.teacher);
-        }
-      });
-    });
-
-    if (teachers.size === 0) {
-      await lineService.sendReplyMessage(replyToken, {
-        type: 'text',
-        text: '找不到您孩子的老師。請先確認孩子已加入班級。\n' +
-              'No teachers found for your children. Please ensure your child is enrolled in a class.'
-      });
-      return;
-    }
-
-    // Save message and notify we've received it
-    for (const [teacherId, teacher] of teachers) {
-      await prisma.message.create({
-        data: {
-          senderId: user.id,
-          recipientId: teacherId,
-          originalText: text,
-          originalLang: sourceLang,
-          translatedText,
-          translatedLang: targetLang,
-          sentViaLine: true,
-          lineMessageId: replyToken
-        }
-      });
-    }
-
-    await lineService.sendReplyMessage(replyToken, {
-      type: 'text',
-      text: `訊息已送達！老師們會盡快回覆您。\n` +
-            `Message sent! Teachers will reply soon.\n\n` +
-            `已發送給 ${teachers.size} 位老師。\nSent to ${teachers.size} teacher(s).`
-    });
-  } else {
-    // For teachers/admins - just acknowledge
-    await lineService.sendReplyMessage(replyToken, {
-      type: 'text',
-      text: '訊息已收到。請使用 Erudition 應用程式發送訊息給家長。\n' +
-            'Message received. Please use the Erudition app to send messages to parents.'
-    });
-  }
-}
-
-/**
- * Handle image message
- */
-async function handleImageMessage(user, message, replyToken) {
-  await lineService.sendReplyMessage(replyToken, {
-    type: 'text',
-    text: '已收到您的圖片！目前圖片需透過應用程式上傳。\n' +
-          'Image received! Please upload images through the app for now.'
-  });
-}
-
-/**
- * Send attendance summary for parent's children
- */
-async function sendAttendanceSummary(user, replyToken) {
-  if (user.role !== 'PARENT') {
-    await lineService.sendReplyMessage(replyToken, {
-      type: 'text',
-      text: '此功能僅供家長使用。\nThis feature is for parents only.'
-    });
-    return;
-  }
-
-  // Get parent's children
-  const parentStudents = await prisma.parentStudent.findMany({
-    where: { parentId: user.id },
-    include: {
-      student: {
-        include: {
-          attendance: {
-            where: {
-              date: {
-                gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-              }
-            },
-            include: {
-              class: { select: { name: true } }
-            },
-            orderBy: { date: 'desc' },
-            take: 10
-          }
-        }
-      }
-    }
-  });
-
-  if (parentStudents.length === 0) {
-    await lineService.sendReplyMessage(replyToken, {
-      type: 'text',
-      text: '找不到您的孩子資料。\nNo children found for your account.'
-    });
-    return;
-  }
-
-  let summary = '📊 出席記錄 (過去7天)\nAttendance Summary (Last 7 days)\n\n';
-
-  for (const ps of parentStudents) {
-    const student = ps.student;
-    summary += `👤 ${student.firstName} ${student.lastName}\n`;
-    
-    if (student.attendance.length === 0) {
-      summary += '   無記錄 No records\n\n';
+    if (convId.startsWith('line-')) {
+      // LINE conversation
+      whereClause = { threadId: convId };
     } else {
-      for (const att of student.attendance.slice(0, 5)) {
-        const date = new Date(att.date).toLocaleDateString('zh-TW');
-        const statusEmoji = {
-          'PRESENT': '✅',
-          'ABSENT': '❌',
-          'LATE': '⏰',
-          'EXCUSED': '📝',
-          'EARLY_LEAVE': '🚶'
-        }[att.status] || '❓';
-        summary += `   ${date} ${att.class.name}: ${statusEmoji}\n`;
-      }
-      summary += '\n';
+      // Regular conversation (user pair)
+      const [user1, user2] = convId.split('-');
+      whereClause = {
+        OR: [
+          { senderId: user1, recipientId: user2 },
+          { senderId: user2, recipientId: user1 }
+        ]
+      };
     }
-  }
 
-  await lineService.sendReplyMessage(replyToken, {
-    type: 'text',
-    text: summary
-  });
-}
-
-/**
- * Send homework summary for parent's children
- */
-async function sendHomeworkSummary(user, replyToken) {
-  if (user.role !== 'PARENT') {
-    await lineService.sendReplyMessage(replyToken, {
-      type: 'text',
-      text: '此功能僅供家長使用。\nThis feature is for parents only.'
+    const messages = await prisma.message.findMany({
+      where: whereClause,
+      include: {
+        sender: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+            lineDisplayName: true,
+            lineProfileUrl: true
+          }
+        },
+        recipient: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            role: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'asc' }
     });
-    return;
-  }
 
-  // Get parent's children and their pending homework
-  const parentStudents = await prisma.parentStudent.findMany({
-    where: { parentId: user.id },
-    include: {
-      student: {
-        include: {
-          enrollments: {
-            where: { status: 'ACTIVE' },
-            include: {
-              class: {
-                include: {
-                  homework: {
-                    where: {
-                      dueDate: { gte: new Date() }
-                    },
-                    orderBy: { dueDate: 'asc' },
-                    take: 5
-                  }
-                }
-              }
-            }
-          },
-          homeworkSubmissions: {
-            select: { homeworkId: true }
+    // Mark as read
+    const unreadIds = messages
+      .filter(m => !m.readAt && m.recipientId === userId)
+      .map(m => m.id);
+
+    if (unreadIds.length > 0) {
+      await prisma.message.updateMany({
+        where: { id: { in: unreadIds } },
+        data: { readAt: new Date() }
+      });
+    }
+
+    res.json(messages);
+  } catch (error) {
+    console.error('Get conversation error:', error);
+    res.status(500).json({ error: 'Failed to fetch conversation' });
+  }
+});
+
+// ======================
+// SEND MESSAGE
+// ======================
+
+// POST /api/messages/send - Send a message
+router.post('/send', async (req, res) => {
+  try {
+    const { recipientId, text, threadId } = req.body;
+    const senderId = req.user.id;
+    const schoolId = req.user.schoolId;
+
+    if (!recipientId || !text) {
+      return res.status(400).json({ error: 'Recipient and text are required' });
+    }
+
+    // Get recipient info
+    const recipient = await prisma.user.findUnique({
+      where: { id: recipientId },
+      select: {
+        id: true,
+        lineUserId: true,
+        schoolId: true,
+        role: true,
+        firstName: true,
+        lastName: true
+      }
+    });
+
+    if (!recipient) {
+      return res.status(404).json({ error: 'Recipient not found' });
+    }
+
+    // Determine thread ID
+    let messageThreadId = threadId;
+    if (!messageThreadId && recipient.lineUserId && recipient.role === 'PARENT') {
+      // This is a reply to a LINE user
+      messageThreadId = `line-${recipient.id}`;
+    }
+
+    // Create message in database
+    const message = await prisma.message.create({
+      data: {
+        senderId,
+        recipientId,
+        originalText: text,
+        originalLang: detectLanguage(text),
+        threadId: messageThreadId,
+        sentViaLine: false // Will update if LINE send succeeds
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            role: true
+          }
+        },
+        recipient: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+            lineUserId: true
           }
         }
       }
-    }
-  });
-
-  if (parentStudents.length === 0) {
-    await lineService.sendReplyMessage(replyToken, {
-      type: 'text',
-      text: '找不到您的孩子資料。\nNo children found for your account.'
     });
-    return;
+
+    // If recipient has LINE connected, also send via LINE
+    if (recipient.lineUserId) {
+      const senderName = `${req.user.lastName}${req.user.firstName}`;
+      const lineText = `💬 ${senderName}老師：\n${text}`;
+      
+      const lineSent = await sendLineMessage(schoolId, recipient.lineUserId, lineText);
+      
+      if (lineSent) {
+        await prisma.message.update({
+          where: { id: message.id },
+          data: { sentViaLine: true }
+        });
+        message.sentViaLine = true;
+      }
+    }
+
+    res.status(201).json(message);
+  } catch (error) {
+    console.error('Send message error:', error);
+    res.status(500).json({ error: 'Failed to send message' });
   }
+});
 
-  let summary = '📚 待完成作業\nPending Homework\n\n';
+// ======================
+// PARENTS LIST (for new conversation)
+// ======================
 
-  for (const ps of parentStudents) {
-    const student = ps.student;
-    const submittedIds = new Set(student.homeworkSubmissions.map(s => s.homeworkId));
-    
-    summary += `👤 ${student.firstName} ${student.lastName}\n`;
-    
-    let hasHomework = false;
-    for (const enrollment of student.enrollments) {
-      for (const hw of enrollment.class.homework) {
-        if (!submittedIds.has(hw.id)) {
-          hasHomework = true;
-          const dueDate = new Date(hw.dueDate).toLocaleDateString('zh-TW');
-          summary += `   📝 ${hw.title}\n`;
-          summary += `      班級: ${enrollment.class.name}\n`;
-          summary += `      截止: ${dueDate}\n\n`;
+// GET /api/messages/parents - Get list of parents to message
+router.get('/parents', authorize('ADMIN', 'MANAGER', 'TEACHER'), async (req, res) => {
+  try {
+    const schoolId = req.user.schoolId;
+
+    const parents = await prisma.user.findMany({
+      where: {
+        schoolId,
+        role: 'PARENT',
+        isActive: true
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        lineUserId: true,
+        lineDisplayName: true,
+        parentRelations: {
+          select: {
+            student: {
+              select: {
+                firstName: true,
+                lastName: true,
+                englishName: true
+              }
+            }
+          }
         }
-      }
-    }
-
-    if (!hasHomework) {
-      summary += '   ✅ 所有作業已完成！All homework done!\n\n';
-    }
-  }
-
-  await lineService.sendReplyMessage(replyToken, {
-    type: 'text',
-    text: summary
-  });
-}
-
-/**
- * Send help message
- */
-async function sendHelpMessage(user, replyToken) {
-  const helpText = `🎓 Erudition 指令說明\nCommand Guide\n\n` +
-    `📊 出席 / attendance\n` +
-    `   查看出席記錄\n   View attendance records\n\n` +
-    `📚 作業 / homework\n` +
-    `   查看待完成作業\n   View pending homework\n\n` +
-    `💬 直接輸入訊息\n   Direct message\n` +
-    `   發送訊息給老師\n   Send message to teachers\n\n` +
-    `❓ 幫助 / help\n` +
-    `   顯示此說明\n   Show this guide`;
-
-  await lineService.sendReplyMessage(replyToken, {
-    type: 'text',
-    text: helpText
-  });
-}
-
-/**
- * Handle new follower
- */
-async function handleFollowEvent(event) {
-  const lineUserId = event.source.userId;
-  const replyToken = event.replyToken;
-
-  // Check if user exists
-  const user = await prisma.user.findUnique({
-    where: { lineUserId }
-  });
-
-  if (user) {
-    // Existing user - welcome back
-    await lineService.sendReplyMessage(replyToken, {
-      type: 'text',
-      text: `歡迎回來，${user.firstName}！\n` +
-            `Welcome back, ${user.firstName}!\n\n` +
-            `輸入「幫助」或「help」查看可用指令。\n` +
-            `Type "help" to see available commands.`
+      },
+      orderBy: { lastName: 'asc' }
     });
-  } else {
-    // New follower - registration prompt
-    await lineService.sendReplyMessage(replyToken, [
-      {
-        type: 'text',
-        text: '歡迎加入 Erudition！🎓\n' +
-              'Welcome to Erudition!\n\n' +
-              '請先透過我們的網站或應用程式完成註冊，' +
-              '然後在設定中連結您的 LINE 帳號。\n\n' +
-              'Please register through our website or app first, ' +
-              'then link your LINE account in settings.'
+
+    res.json(parents.map(p => ({
+      id: p.id,
+      name: `${p.lastName}${p.firstName}`,
+      firstName: p.firstName,
+      lastName: p.lastName,
+      hasLine: !!p.lineUserId,
+      lineDisplayName: p.lineDisplayName,
+      students: p.parentRelations.map(pr => ({
+        name: `${pr.student.lastName}${pr.student.firstName}`,
+        englishName: pr.student.englishName
+      }))
+    })));
+  } catch (error) {
+    console.error('Get parents error:', error);
+    res.status(500).json({ error: 'Failed to fetch parents' });
+  }
+});
+
+// ======================
+// UNREAD COUNT
+// ======================
+
+// GET /api/messages/unread-count - Get total unread count
+router.get('/unread-count', async (req, res) => {
+  try {
+    const count = await prisma.message.count({
+      where: {
+        recipientId: req.user.id,
+        readAt: null
       }
-    ]);
+    });
+
+    res.json({ count });
+  } catch (error) {
+    console.error('Get unread count error:', error);
+    res.status(500).json({ error: 'Failed to get unread count' });
   }
-}
-
-/**
- * Handle unfollow (user blocked the bot)
- */
-async function handleUnfollowEvent(event) {
-  const lineUserId = event.source.userId;
-  
-  // Optionally update user record
-  const user = await prisma.user.findUnique({
-    where: { lineUserId }
-  });
-
-  if (user) {
-    console.log(`User ${user.id} unfollowed LINE bot`);
-    // Could clear LINE credentials or mark for follow-up
-  }
-}
-
-/**
- * Handle postback events (from buttons/quick replies)
- */
-async function handlePostbackEvent(event) {
-  const { postback, replyToken, source } = event;
-  const lineUserId = source.userId;
-  const data = new URLSearchParams(postback.data);
-  const action = data.get('action');
-
-  console.log('Postback action:', action, data);
-
-  const user = await prisma.user.findUnique({
-    where: { lineUserId }
-  });
-
-  if (!user) {
-    return;
-  }
-
-  switch (action) {
-    case 'view_attendance':
-      await sendAttendanceSummary(user, replyToken);
-      break;
-      
-    case 'view_homework':
-      await sendHomeworkSummary(user, replyToken);
-      break;
-      
-    default:
-      await lineService.sendReplyMessage(replyToken, {
-        type: 'text',
-        text: '未知的操作。\nUnknown action.'
-      });
-  }
-}
+});
 
 export default router;

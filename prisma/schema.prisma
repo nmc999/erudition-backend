@@ -80,6 +80,8 @@ model School {
   assessments     Assessment[]
   calendarEvents     CalendarEvent[]
   tourBookings       TourBooking[]
+  messageTemplates   MessageTemplate[]
+  broadcastMessages  BroadcastMessage[]
 
   @@map("schools")
 }
@@ -142,6 +144,9 @@ model User {
   eventsCreated      CalendarEvent[]    @relation("EventCreator")
   toursAssigned      TourBooking[]      @relation("TourAssignee")
   notesAuthored      StudentNote[]      @relation("NoteAuthor")
+  templatesCreated   MessageTemplate[]    @relation("TemplateCreator")
+  broadcastsCreated  BroadcastMessage[]   @relation("BroadcastCreator")
+  broadcastsReceived BroadcastRecipient[] @relation("BroadcastRecipient")
 
   @@index([schoolId])
   @@index([lineUserId])
@@ -210,6 +215,7 @@ model Student {
   assessmentScores  AssessmentScore[]
   tourEnrollments    TourBooking[]
   studentNotes       StudentNote[]
+  broadcastRecipients BroadcastRecipient[] @relation("BroadcastStudent")
 
   @@index([schoolId])
   @@index([status])
@@ -1574,6 +1580,7 @@ model CalendarEvent {
   createdBy    User               @relation("EventCreator", fields: [createdById], references: [id])
   classImpacts EventClassImpact[]
   tours        TourBooking[]
+  broadcasts         BroadcastMessage[]   @relation("EventBroadcasts")
 
   @@index([schoolId])
   @@index([startDate, endDate])
@@ -1694,4 +1701,129 @@ enum NoteCategory {
   PARENTAL
   MEDICAL
   GENERAL
+}
+
+// ======================
+// LINE MESSAGING SYSTEM
+// ======================
+
+model MessageTemplate {
+  id              String       @id @default(uuid())
+  schoolId        String
+  type            TemplateType
+  name            String
+  nameChinese     String?
+  subject         String?
+  subjectChinese  String?
+  body            String       @db.Text
+  bodyChinese     String?      @db.Text
+  placeholders    Json?        @default("[]")
+  isActive        Boolean      @default(true)
+  isDefault       Boolean      @default(false)
+  createdById     String
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  school     School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdBy  User               @relation("TemplateCreator", fields: [createdById], references: [id])
+  broadcasts BroadcastMessage[]
+
+  @@index([schoolId])
+  @@index([type])
+  @@map("message_templates")
+}
+
+enum TemplateType {
+  ATTENDANCE_ABSENT
+  ATTENDANCE_LATE
+  EVENT_REMINDER
+  PAYMENT_REMINDER
+  CUSTOM_ANNOUNCEMENT
+  ASSESSMENT_RESULT
+  BEHAVIOR_ALERT
+}
+
+model BroadcastMessage {
+  id              String          @id @default(uuid())
+  schoolId        String
+  subject         String?
+  subjectChinese  String?
+  body            String          @db.Text
+  bodyChinese     String?         @db.Text
+  scope           BroadcastScope
+  targetClassIds  Json?           @default("[]")
+  templateId      String?
+  status          BroadcastStatus @default(DRAFT)
+  scheduledAt     DateTime?
+  sentAt          DateTime?
+  completedAt     DateTime?
+  totalRecipients Int             @default(0)
+  sentCount       Int             @default(0)
+  deliveredCount  Int             @default(0)
+  readCount       Int             @default(0)
+  failedCount     Int             @default(0)
+  createdById     String
+  calendarEventId String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  school        School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdBy     User                 @relation("BroadcastCreator", fields: [createdById], references: [id])
+  template      MessageTemplate?     @relation(fields: [templateId], references: [id])
+  calendarEvent CalendarEvent?       @relation("EventBroadcasts", fields: [calendarEventId], references: [id])
+  recipients    BroadcastRecipient[]
+
+  @@index([schoolId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("broadcast_messages")
+}
+
+enum BroadcastScope {
+  ALL_PARENTS
+  CLASS_PARENTS
+  CUSTOM
+}
+
+enum BroadcastStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  PARTIAL_FAILURE
+  FAILED
+}
+
+model BroadcastRecipient {
+  id            String         @id @default(uuid())
+  broadcastId   String
+  parentId      String
+  studentId     String?
+  status        DeliveryStatus @default(PENDING)
+  lineMessageId String?
+  sentAt        DateTime?
+  deliveredAt   DateTime?
+  readAt        DateTime?
+  failedAt      DateTime?
+  failureReason String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  broadcast BroadcastMessage @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  parent    User             @relation("BroadcastRecipient", fields: [parentId], references: [id])
+  student   Student?         @relation("BroadcastStudent", fields: [studentId], references: [id])
+
+  @@unique([broadcastId, parentId])
+  @@index([broadcastId])
+  @@index([parentId])
+  @@index([status])
+  @@map("broadcast_recipients")
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
 }

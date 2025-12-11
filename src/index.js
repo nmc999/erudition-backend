@@ -25,6 +25,7 @@ import classRoutes from './routes/classes.js';
 import attendanceRoutes from './routes/attendance.js';
 import homeworkRoutes from './routes/homework.js';
 import messageRoutes from './routes/messages.js';
+import messagesRoutes from './routes/messages.js';
 import lineWebhook from './routes/lineWebhook.js';
 import reportsRoutes from './routes/reports.js';
 import invoicesRoutes from './routes/invoices.js';
@@ -48,6 +49,10 @@ import pointsRoutes from './routes/points.js';
 import assessmentsRoutes from './routes/assessments.js';
 import calendarRoutes from './routes/calendar.js';
 import studentNotesRoutes from './routes/studentNotes.js';
+import broadcastRoutes from './routes/broadcast.js';
+import lineWebhookRoutes from './routes/lineWebhook.js';
+import lineAuthRoutes from './routes/lineAuth.js';
+
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -115,6 +120,10 @@ app.use('/api/points', pointsRoutes);
 app.use('/api/assessments', assessmentsRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/student-notes', studentNotesRoutes);
+app.use('/api/broadcast', broadcastRoutes);
+app.use('/api/line', lineWebhookRoutes);
+app.use('/api/auth/line', lineAuthRoutes);
+app.use('/api/messages', messagesRoutes);
 
 // ======================
 // ROUTES
